@@ -11,6 +11,9 @@ if (!process.env.DATABASE_URL) {
 if (!process.env.DIRECT_URL) {
   process.env.DIRECT_URL = process.env.DATABASE_URL;
 }
+if (!process.env.WEB_URL && process.env.RENDER_EXTERNAL_URL) {
+  process.env.WEB_URL = process.env.RENDER_EXTERNAL_URL.replace(/\/+$/, '');
+}
 
 process.env.NEXT_PUBLIC_API_URL ||= '/api';
 process.env.INTERNAL_API_URL ||= 'http://127.0.0.1:4000';
@@ -42,24 +45,33 @@ function run(cwd, command, args) {
 
 async function waitForApi() {
   const url = `http://127.0.0.1:${process.env.API_PORT}/health`;
-  for (let i = 0; i < 60; i += 1) {
+  for (let i = 0; i < 120; i += 1) {
     try {
       const res = await fetch(url);
       if (res.ok) return;
     } catch {
       /* still starting */
     }
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await new Promise((resolve) => setTimeout(resolve, 500));
   }
   throw new Error(`Express did not become healthy at ${url}`);
 }
 
-console.log('Applying Prisma schema (db push, no seed)…');
-const push = spawn('npx', ['prisma', 'db', 'push', '--skip-generate'], {
+console.log('Enabling PostgreSQL extensions (citext, pgcrypto)…');
+const extensions = spawn('npx', ['prisma', 'db', 'execute', '--file', 'prisma/sql/enable-extensions.sql', '--schema', 'prisma/schema.prisma'], {
   cwd: path.join(root, 'ecom-backend'),
   stdio: 'inherit',
   env: process.env,
 });
+
+extensions.on('exit', (extCode) => {
+  if (extCode && extCode !== 0) process.exit(extCode);
+  console.log('Applying Prisma schema (db push, no seed)…');
+  const push = spawn('npx', ['prisma', 'db', 'push', '--skip-generate'], {
+    cwd: path.join(root, 'ecom-backend'),
+    stdio: 'inherit',
+    env: process.env,
+  });
 
 push.on('exit', async (code) => {
   if (code && code !== 0) process.exit(code);
@@ -72,4 +84,5 @@ push.on('exit', async (code) => {
   }
   run('ecom-frontend', 'node', ['server.js']);
   console.log(`Public Next.js on ${process.env.HOSTNAME}:${publicPort}; Express on 127.0.0.1:${process.env.API_PORT}`);
+});
 });

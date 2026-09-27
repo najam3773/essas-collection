@@ -18,7 +18,7 @@ RUN npm run build
 
 FROM node:20-alpine
 WORKDIR /app
-RUN apk add --no-cache libc6-compat
+RUN apk add --no-cache libc6-compat openssl
 COPY --from=backend-build /app/ecom-backend/package.json ./ecom-backend/package.json
 COPY --from=backend-build /app/ecom-backend/package-lock.json ./ecom-backend/package-lock.json
 COPY --from=backend-build /app/ecom-backend/node_modules ./ecom-backend/node_modules
