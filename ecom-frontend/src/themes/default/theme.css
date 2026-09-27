@@ -1,0 +1,18 @@
+/* Default boutique pack — structure on top of shared store-root tokens. */
+.theme-ui-default {
+  --radius: 18px;
+  --header-h: 108px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.theme-ui-default .hero-brand {
+  letter-spacing: 0.01em;
+}
+
+@media (max-width: 720px) {
+  .theme-ui-default .footer-premium {
+    margin-top: 48px;
+  }
+}

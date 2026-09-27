@@ -1,0 +1,14 @@
+**/node_modules
+**/.next
+**/dist
+**/.env
+**/.env.local
+**/.git
+**/.cursor
+**/.idea
+**/.vscode
+**/coverage
+**/*.log
+ecom-backend/uploads/essa-source
+ecom-frontend/.vinext
+ecom-frontend/.wrangler

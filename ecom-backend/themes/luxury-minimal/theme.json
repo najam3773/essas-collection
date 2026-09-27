@@ -1,0 +1,13 @@
+{
+  "id": "luxury-minimal",
+  "name": "Luxury Minimal",
+  "version": "1.2.0",
+  "industry_tags": ["jewelry", "fashion", "beauty"],
+  "required_features": ["catalog.products"],
+  "layouts": ["home", "collection", "product", "cart", "page"],
+  "sections": ["hero-split", "image-with-text", "testimonials", "featured-collection"],
+  "settings_schema": {
+    "hero_style": { "type": "select", "options": ["full-bleed", "split"] },
+    "product_card_style": { "type": "select", "options": ["minimal", "overlay"] }
+  }
+}

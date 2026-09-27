@@ -1,0 +1,13 @@
+{
+  "id": "default",
+  "name": "Default Store",
+  "version": "1.0.0",
+  "industry_tags": ["general"],
+  "required_features": ["catalog.products"],
+  "layouts": ["home", "collection", "product", "cart", "page"],
+  "sections": ["hero-banner", "featured-products", "newsletter"],
+  "settings_schema": {
+    "hero_style": { "type": "select", "options": ["full-bleed", "split"] },
+    "product_card_style": { "type": "select", "options": ["minimal", "overlay"] }
+  }
+}

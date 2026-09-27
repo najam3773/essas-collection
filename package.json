@@ -1,0 +1,19 @@
+{
+  "name": "essas-collection",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Essa's Collection — single-store fashion e-commerce",
+  "scripts": {
+    "install:all": "npm install --prefix ecom-backend && npm install --prefix ecom-frontend",
+    "prisma:generate": "npm run prisma:generate --prefix ecom-backend",
+    "db:push": "npm run db:push --prefix ecom-backend",
+    "db:init": "npm run db:push --prefix ecom-backend",
+    "seed": "npm run seed --prefix ecom-backend",
+    "dev": "node scripts/dev.mjs",
+    "dev:api": "npm run dev --prefix ecom-backend",
+    "dev:web": "npm run dev --prefix ecom-frontend",
+    "build": "npm run prisma:generate --prefix ecom-backend && npm run build --prefix ecom-backend && npm run build --prefix ecom-frontend",
+    "start": "node scripts/start-prod.mjs",
+    "start:docker": "node scripts/start-docker.mjs"
+  }
+}

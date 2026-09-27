@@ -1,0 +1,319 @@
+name: DEV Pipeline
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20.x'
+  DEPLOYMENT_PATH: '/opt/ecomm/be'
+  ENVIRONMENT: 'DEV'
+  API_PORT: '4000'
+
+jobs:
+  # ===========================================
+  # Job 1: Build & Ship Source
+  # ===========================================
+  build:
+    name: Build Application
+    runs-on: ubuntu-latest
+    # DEV must only ever be built from the dev branch. workflow_dispatch can be
+    # aimed at any ref, so without this guard another branch can be published to
+    # DEV with nothing afterwards recording that it happened.
+    if: github.ref == 'refs/heads/dev'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Type-check / build
+        run: npm run build
+
+      - name: Stage deployment payload
+        run: |
+          echo "Staging files for deployment..."
+          # The server builds the image from source (Dockerfile runs tsx against
+          # src/), so the payload is the source tree, not dist/. node_modules and
+          # .env are deliberately excluded: the image installs its own deps and
+          # the .env is written on the server from secrets.
+          mkdir -p out
+          rsync -a \
+            --exclude '.git' \
+            --exclude 'node_modules' \
+            --exclude 'out' \
+            --exclude '.env' \
+            --exclude '.env.local' \
+            --exclude 'dist' \
+            --exclude '*.pdf' \
+            ./ out/
+
+      - name: Create deployment metadata
+        run: |
+          echo "Creating version information..."
+          cat > out/deployment-info.txt <<EOF
+          Environment: ${{ env.ENVIRONMENT }}
+          Branch: ${{ github.ref_name }}
+          Commit: ${{ github.sha }}
+          Build Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          Triggered By: ${{ github.actor }}
+          Workflow Run: ${{ github.run_number }}
+          EOF
+          cat out/deployment-info.txt
+
+      - name: Copy artifacts to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEV_ECOMM_HOST }}
+          username: ${{ secrets.DEV_ECOMM_USER }}
+          password: ${{ secrets.DEV_ECOMM_PASSWORD }}
+          port: ${{ secrets.DEV_ECOMM_PORT }}
+          source: "out/*"
+          target: "${{ env.DEPLOYMENT_PATH }}/incoming/"
+          timeout: 10m
+          command_timeout: 10m
+
+  # ===========================================
+  # Job 2: Backup Current Version
+  # ===========================================
+  backup:
+    name: Backup Current Version
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/dev'
+    steps:
+      - name: Create backup of existing deployment
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEV_ECOMM_HOST }}
+          username: ${{ secrets.DEV_ECOMM_USER }}
+          password: ${{ secrets.DEV_ECOMM_PASSWORD }}
+          port: ${{ secrets.DEV_ECOMM_PORT }}
+          command_timeout: 10m
+          script: |
+            set -e
+            echo "=========================================="
+            echo "Starting backup process for DEV environment"
+            echo "=========================================="
+
+            BACKUP_BASE="${{ env.DEPLOYMENT_PATH }}/backup"
+            TIMESTAMP=$(date +'%Y%m%d_%H%M%S')
+            BACKUP_DIR="$BACKUP_BASE/dev_backup_$TIMESTAMP"
+
+            mkdir -p "$BACKUP_DIR"
+
+            if [ -d "${{ env.DEPLOYMENT_PATH }}/main" ] && [ "$(ls -A ${{ env.DEPLOYMENT_PATH }}/main)" ]; then
+              echo "Backing up existing deployment..."
+              # -a preserves the .env written by the previous deploy, so a
+              # rollback from this directory is runnable as-is.
+              cp -a ${{ env.DEPLOYMENT_PATH }}/main/. "$BACKUP_DIR/"
+              echo "Backup created: $BACKUP_DIR"
+
+              BACKUP_SIZE=$(du -sh "$BACKUP_DIR" | cut -f1)
+              echo "Backup size: $BACKUP_SIZE"
+            else
+              echo "No existing deployment found, skipping backup"
+              rmdir "$BACKUP_DIR" 2>/dev/null || true
+            fi
+
+            echo ""
+            echo "Cleaning up old backups (keeping last 10)..."
+            cd "$BACKUP_BASE"
+            BACKUP_COUNT=$(ls -1d dev_backup_* 2>/dev/null | wc -l)
+            echo "Current backup count: $BACKUP_COUNT"
+
+            if [ "$BACKUP_COUNT" -gt 10 ]; then
+              OLD_BACKUPS=$(ls -1td dev_backup_* | tail -n +11)
+              echo "Removing old backups:"
+              echo "$OLD_BACKUPS"
+              echo "$OLD_BACKUPS" | xargs rm -rf
+              echo "Old backups removed"
+            fi
+
+            echo ""
+            echo "Available backups:"
+            ls -lth | grep dev_backup_ | head -n 5 || echo "No backups found"
+            echo "=========================================="
+
+  # ===========================================
+  # Job 3: Deploy
+  # ===========================================
+  deploy:
+    name: Deploy to DEV
+    runs-on: ubuntu-latest
+    needs: [build, backup]
+    timeout-minutes: 20
+    if: github.ref == 'refs/heads/dev'
+    steps:
+      - name: Deploy application
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEV_ECOMM_HOST }}
+          username: ${{ secrets.DEV_ECOMM_USER }}
+          password: ${{ secrets.DEV_ECOMM_PASSWORD }}
+          port: ${{ secrets.DEV_ECOMM_PORT }}
+          command_timeout: 20m
+          script: |
+            set -e
+            echo "=========================================="
+            echo "Starting deployment to DEV environment"
+            echo "=========================================="
+
+            APP_DIR="${{ env.DEPLOYMENT_PATH }}/main"
+
+            echo "Verifying incoming payload..."
+            # Guard before anything is torn down: if scp only half-landed, the
+            # old deployment is still running and worth keeping.
+            test -f "${{ env.DEPLOYMENT_PATH }}/incoming/out/docker-compose.yml"
+            test -f "${{ env.DEPLOYMENT_PATH }}/incoming/out/Dockerfile"
+            test -f "${{ env.DEPLOYMENT_PATH }}/incoming/out/package.json"
+
+            echo "Stopping existing containers..."
+            if [ -f "$APP_DIR/docker-compose.yml" ]; then
+              cd "$APP_DIR"
+              # Volumes are kept, so the postgres data survives the redeploy.
+              docker compose down --remove-orphans || true
+            fi
+
+            echo "Removing old deployment files..."
+            rm -rf "$APP_DIR"
+            mkdir -p "$APP_DIR"
+
+            echo "Copying new deployment files..."
+            cp -r ${{ env.DEPLOYMENT_PATH }}/incoming/out/. "$APP_DIR/"
+
+            echo "Setting file permissions..."
+            chown -R $(id -u):$(id -g) "$APP_DIR"
+
+            echo "Creating environment configuration..."
+            cd "$APP_DIR"
+            cat > .env <<'EOL'
+            ${{ secrets.DEV_ENV_FULL_BE }}
+            EOL
+            chmod 600 .env
+            echo "Environment configuration created"
+
+            echo "Starting application containers..."
+            docker compose up -d --build --remove-orphans
+
+            echo ""
+            echo "Waiting for containers to start..."
+            sleep 15
+
+            echo ""
+            echo "Container status:"
+            docker compose ps
+
+            echo ""
+            echo "=========================================="
+            echo "Deployment to DEV completed"
+            echo "=========================================="
+
+  # ===========================================
+  # Job 4: Verify
+  # ===========================================
+  verify:
+    name: Verify Deployment
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: github.ref == 'refs/heads/dev'
+    steps:
+      - name: Check deployment health
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEV_ECOMM_HOST }}
+          username: ${{ secrets.DEV_ECOMM_USER }}
+          password: ${{ secrets.DEV_ECOMM_PASSWORD }}
+          port: ${{ secrets.DEV_ECOMM_PORT }}
+          command_timeout: 10m
+          script: |
+            set -e
+            APP_DIR="${{ env.DEPLOYMENT_PATH }}/main"
+
+            echo "Deployment Information:"
+            echo "======================="
+            if [ -f "$APP_DIR/deployment-info.txt" ]; then
+              cat "$APP_DIR/deployment-info.txt"
+            else
+              echo "Deployment info file not found"
+            fi
+
+            echo ""
+            echo "Health check:"
+            echo "============="
+            # Poll rather than sleep-and-hope: the api container waits on the
+            # postgres healthcheck and then runs the seed before listening, so
+            # first response time varies with how much the seed has to do.
+            HEALTHY=0
+            for i in $(seq 1 30); do
+              CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+                http://localhost:${{ env.API_PORT }}/health || true)
+              if [ "$CODE" = "200" ]; then
+                echo "  /health returned 200 after ${i} attempt(s)"
+                HEALTHY=1
+                break
+              fi
+              echo "  attempt ${i}: /health returned '${CODE}', retrying..."
+              sleep 5
+            done
+
+            echo ""
+            echo "API status endpoint:"
+            echo "===================="
+            curl -s --max-time 10 http://localhost:${{ env.API_PORT }}/status || true
+            echo ""
+
+            echo ""
+            echo "Docker Container Status:"
+            echo "========================"
+            cd "$APP_DIR"
+            docker compose ps
+
+            echo ""
+            echo "Recent Logs:"
+            echo "============"
+            docker compose logs --tail=40
+
+            if [ "$HEALTHY" != "1" ]; then
+              echo ""
+              echo "Health check never succeeded - failing the job."
+              exit 1
+            fi
+
+            echo ""
+            echo "Verification passed"
+
+  # ===========================================
+  # Job 5: Cleanup
+  # ===========================================
+  cleanup:
+    name: Cleanup Temporary Files
+    runs-on: ubuntu-latest
+    needs: [build, backup, deploy, verify]
+    if: always() && github.ref == 'refs/heads/dev'
+    steps:
+      - name: Clean incoming directory
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEV_ECOMM_HOST }}
+          username: ${{ secrets.DEV_ECOMM_USER }}
+          password: ${{ secrets.DEV_ECOMM_PASSWORD }}
+          port: ${{ secrets.DEV_ECOMM_PORT }}
+          script: |
+            echo "Cleaning up incoming directory..."
+            rm -rf ${{ env.DEPLOYMENT_PATH }}/incoming/*
+            echo "Cleanup completed"

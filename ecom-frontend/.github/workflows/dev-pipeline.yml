@@ -1,0 +1,293 @@
+name: Dev Pipeline
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+env:
+  DEPLOYMENT_PATH: '/opt/ecomm/fe'
+  ENVIRONMENT: 'DEV'
+
+jobs:
+  # ===========================================
+  # Job 1: Package Source
+  # ===========================================
+  package:
+    name: Package Source
+    runs-on: ubuntu-latest
+    # Dev must only ever be built from the dev branch. workflow_dispatch can be
+    # aimed at any ref, so without this guard another branch can be published to
+    # dev with nothing afterwards recording that it happened.
+    if: github.ref == 'refs/heads/dev'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create deployment metadata
+        run: |
+          echo "Creating version information..."
+          cat > deployment-info.txt <<EOF
+          Environment: ${{ env.ENVIRONMENT }}
+          Branch: ${{ github.ref_name }}
+          Commit: ${{ github.sha }}
+          Build Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          Triggered By: ${{ github.actor }}
+          Workflow Run: ${{ github.run_number }}
+          EOF
+          cat deployment-info.txt
+
+      - name: Package source for server-side image build
+        run: |
+          # Nothing is compiled here. The Dockerfile builds the app on the
+          # server, so this job only ships the repo it builds from.
+          mkdir -p out
+          tar -czf out/source.tar.gz \
+            --exclude='./.git' \
+            --exclude='./node_modules' \
+            --exclude='./.next' \
+            --exclude='./out' \
+            .
+          cp deployment-info.txt out/
+          ls -lh out/
+
+      - name: Copy artifacts to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEV_ECOMM_HOST }}
+          username: ${{ secrets.DEV_ECOMM_USER }}
+          password: ${{ secrets.DEV_ECOMM_PASSWORD }}
+          port: ${{ secrets.DEV_ECOMM_PORT }}
+          source: "out/*"
+          target: "${{ env.DEPLOYMENT_PATH }}/incoming/"
+          timeout: 10m
+          command_timeout: 10m
+
+  # ===========================================
+  # Job 2: Backup Current Version
+  # ===========================================
+  backup:
+    name: Backup Current Version
+    runs-on: ubuntu-latest
+    needs: package
+    if: github.ref == 'refs/heads/dev'
+    steps:
+      - name: Create backup of existing deployment
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEV_ECOMM_HOST }}
+          username: ${{ secrets.DEV_ECOMM_USER }}
+          password: ${{ secrets.DEV_ECOMM_PASSWORD }}
+          port: ${{ secrets.DEV_ECOMM_PORT }}
+          command_timeout: 10m
+          script: |
+            set -e
+            echo "=========================================="
+            echo "Starting backup process for DEV environment"
+            echo "=========================================="
+
+            BACKUP_BASE="${{ env.DEPLOYMENT_PATH }}/backup"
+            TIMESTAMP=$(date +'%Y%m%d_%H%M%S')
+            BACKUP_DIR="$BACKUP_BASE/dev_backup_$TIMESTAMP"
+
+            mkdir -p "$BACKUP_DIR"
+
+            if [ -d "${{ env.DEPLOYMENT_PATH }}/main" ] && [ "$(ls -A ${{ env.DEPLOYMENT_PATH }}/main)" ]; then
+              echo "Backing up existing deployment..."
+              cp -r ${{ env.DEPLOYMENT_PATH }}/main/. "$BACKUP_DIR/"
+              echo "✅ Backup created: $BACKUP_DIR"
+
+              BACKUP_SIZE=$(du -sh "$BACKUP_DIR" | cut -f1)
+              echo "Backup size: $BACKUP_SIZE"
+            else
+              echo "⚠️  No existing deployment found, skipping backup"
+              rmdir "$BACKUP_DIR" 2>/dev/null || true
+            fi
+
+            echo ""
+            echo "Cleaning up old backups (keeping last 10)..."
+            cd "$BACKUP_BASE"
+            BACKUP_COUNT=$(ls -1d dev_backup_* 2>/dev/null | wc -l)
+            echo "Current backup count: $BACKUP_COUNT"
+
+            if [ "$BACKUP_COUNT" -gt 10 ]; then
+              OLD_BACKUPS=$(ls -1td dev_backup_* | tail -n +11)
+              echo "Removing old backups:"
+              echo "$OLD_BACKUPS"
+              echo "$OLD_BACKUPS" | xargs rm -rf
+              echo "✅ Old backups removed"
+            fi
+
+            echo ""
+            echo "Available backups:"
+            ls -lth | grep dev_backup_ | head -n 5 || echo "No backups found"
+            echo "=========================================="
+
+  # ===========================================
+  # Job 3: Deploy
+  # ===========================================
+  deploy:
+    name: Deploy to Dev
+    runs-on: ubuntu-latest
+    needs: [package, backup]
+    timeout-minutes: 20
+    if: github.ref == 'refs/heads/dev'
+    steps:
+      - name: Deploy application
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEV_ECOMM_HOST }}
+          username: ${{ secrets.DEV_ECOMM_USER }}
+          password: ${{ secrets.DEV_ECOMM_PASSWORD }}
+          port: ${{ secrets.DEV_ECOMM_PORT }}
+          command_timeout: 20m
+          script: |
+            set -e
+            echo "=========================================="
+            echo "Starting deployment to DEV environment"
+            echo "=========================================="
+
+            echo "Stopping existing containers..."
+            if [ -f "${{ env.DEPLOYMENT_PATH }}/main/docker-compose.prod.yml" ]; then
+              cd ${{ env.DEPLOYMENT_PATH }}/main
+              docker compose -f docker-compose.prod.yml down --remove-orphans || true
+            fi
+
+            echo "Removing old deployment files..."
+            rm -rf ${{ env.DEPLOYMENT_PATH }}/main
+            mkdir -p ${{ env.DEPLOYMENT_PATH }}/main
+
+            echo "Unpacking new deployment files..."
+            tar -xzf ${{ env.DEPLOYMENT_PATH }}/incoming/out/source.tar.gz \
+              -C ${{ env.DEPLOYMENT_PATH }}/main
+            cp ${{ env.DEPLOYMENT_PATH }}/incoming/out/deployment-info.txt \
+              ${{ env.DEPLOYMENT_PATH }}/main/
+
+            echo "Setting file permissions..."
+            chown -R $(id -u):$(id -g) ${{ env.DEPLOYMENT_PATH }}/main
+
+            echo "Creating environment configuration..."
+            cd ${{ env.DEPLOYMENT_PATH }}/main
+            cat > .env <<'EOL'
+            ${{ secrets.DEV_ENV_FULL_FE }}
+            EOL
+            # NEXT_PUBLIC_* is inlined at build time, so compose must see it as a
+            # shell variable for the build arg, not only in the container env.
+            set -a; . ./.env; set +a
+            echo "✅ Environment configuration created"
+
+            echo "Building and starting application containers..."
+            docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
+
+            echo ""
+            echo "Waiting for containers to start..."
+            sleep 10
+
+            echo ""
+            echo "Container status:"
+            docker compose -f docker-compose.prod.yml ps
+
+            echo ""
+            echo "Pruning dangling images..."
+            docker image prune -f || true
+
+            echo ""
+            echo "=========================================="
+            echo "✅ Deployment to DEV completed successfully"
+            echo "=========================================="
+
+  # ===========================================
+  # Job 4: Verify
+  # ===========================================
+  verify:
+    name: Verify Deployment
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: github.ref == 'refs/heads/dev'
+    steps:
+      - name: Wait for application startup
+        run: |
+          echo "Waiting 30 seconds for application to fully start..."
+          sleep 30
+
+      - name: Check deployment info
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEV_ECOMM_HOST }}
+          username: ${{ secrets.DEV_ECOMM_USER }}
+          password: ${{ secrets.DEV_ECOMM_PASSWORD }}
+          port: ${{ secrets.DEV_ECOMM_PORT }}
+          command_timeout: 10m
+          script: |
+            echo "Deployment Information:"
+            echo "======================="
+            if [ -f "${{ env.DEPLOYMENT_PATH }}/main/deployment-info.txt" ]; then
+              cat ${{ env.DEPLOYMENT_PATH }}/main/deployment-info.txt
+            else
+              echo "⚠️  Deployment info file not found"
+            fi
+
+            cd ${{ env.DEPLOYMENT_PATH }}/main
+
+            echo ""
+            echo "Running image:"
+            echo "=============="
+            # The container is built from this source, so the image creation time
+            # should match this run; an older one means the rebuild did not take.
+            docker image inspect ecom-frontend:latest \
+              --format 'ecom-frontend:latest created {{.Created}}' || true
+
+            echo ""
+            echo "Health check:"
+            echo "============="
+            # The app binds 127.0.0.1:3000 on the host; a non-200 here means the
+            # container is up but the Next.js server is not serving.
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 http://127.0.0.1:3000/ || echo "000")
+            echo "  GET / -> HTTP $CODE  (expect 200)"
+
+            echo ""
+            echo "API URL baked into the client bundle:"
+            echo "====================================="
+            # NEXT_PUBLIC_API_URL is inlined at build time. If this is empty or
+            # shows localhost, the image was built without the dev API URL.
+            HTML=$(curl -s --max-time 20 http://127.0.0.1:3000/ || true)
+            printf '%s' "$HTML" | grep -o 'https\?://[^"]*' | sort -u | head -n 10 || true
+
+            echo ""
+            echo "Docker Container Status:"
+            echo "========================"
+            docker compose -f docker-compose.prod.yml ps
+
+            echo ""
+            echo "Recent Logs:"
+            echo "============"
+            docker compose -f docker-compose.prod.yml logs --tail=20
+
+            if [ "$CODE" != "200" ]; then
+              echo "❌ Application did not return HTTP 200"
+              exit 1
+            fi
+
+  # ===========================================
+  # Job 5: Cleanup
+  # ===========================================
+  cleanup:
+    name: Cleanup Temporary Files
+    runs-on: ubuntu-latest
+    needs: [package, backup, deploy, verify]
+    if: always() && github.ref == 'refs/heads/dev'
+    steps:
+      - name: Clean incoming directory
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEV_ECOMM_HOST }}
+          username: ${{ secrets.DEV_ECOMM_USER }}
+          password: ${{ secrets.DEV_ECOMM_PASSWORD }}
+          port: ${{ secrets.DEV_ECOMM_PORT }}
+          script: |
+            echo "Cleaning up incoming directory..."
+            rm -rf ${{ env.DEPLOYMENT_PATH }}/incoming/*
+            echo "✅ Cleanup completed"

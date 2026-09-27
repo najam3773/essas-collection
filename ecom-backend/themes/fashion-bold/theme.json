@@ -1,0 +1,10 @@
+{
+  "id": "fashion-bold",
+  "name": "Fashion Bold",
+  "version": "1.0.0",
+  "industry_tags": ["fashion", "apparel"],
+  "required_features": ["catalog.products"],
+  "layouts": ["home", "collection", "product", "cart", "page"],
+  "sections": ["hero-video", "lookbook", "featured-collection"],
+  "settings_schema": {}
+}

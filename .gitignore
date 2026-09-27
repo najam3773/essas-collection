@@ -1,0 +1,46 @@
+# Dependencies and builds
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+.next/
+**/.next/
+out/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+!**/.env.example
+!.env.production.example
+!**/.env.production.example
+.env.local
+**/.env.local
+
+# Uploads: keep only the committed catalog images
+ecom-backend/uploads/*
+!ecom-backend/uploads/essa/
+!ecom-backend/uploads/essa/**
+
+# Tooling / OS
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.idea/
+.vs/
+.vscode/
+.cursor/
+.vinext/
+.wrangler/
+ecom-frontend/.vinext/
+ecom-frontend/.wrangler/
+
+# Misc
+*.pem
+*.p12
+credentials.json
+secrets/

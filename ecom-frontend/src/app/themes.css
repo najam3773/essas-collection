@@ -1,0 +1,271 @@
+/* Shared storefront surface tokens. Pack-specific UI CSS lives under src/themes. */
+
+.store-root {
+  color: var(--ink);
+  background: var(--bg, var(--cream));
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+  min-width: 0;
+}
+
+.store-root .store-chrome {
+  background: color-mix(in srgb, var(--bg, var(--cream)) 94%, transparent);
+}
+
+body:has(.store-root) {
+  background: var(--bg, var(--cream));
+  color: var(--ink);
+}
+
+.store-root.theme-dark .store-brand,
+.store-root.theme-dark .store-nav a,
+.store-root.theme-dark .nav-link-btn,
+.store-root.theme-dark .search-bar input {
+  color: var(--ink);
+}
+
+.store-root.theme-dark .product-card {
+  color: var(--ink);
+}
+
+/* Auto-contrast for surfaces/text that are NOT brand primary/secondary/background fills */
+.store-root .card,
+.store-root .panel,
+.store-root .filters,
+.store-root .suggest-panel,
+.store-root .mega,
+.store-root .home-feature,
+.store-root .qty-stepper,
+.store-root .sticky-atc {
+  background: var(--card);
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.store-root .input,
+.store-root .select,
+.store-root .textarea,
+.store-root .search-bar {
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+
+.store-root .input::placeholder,
+.store-root .textarea::placeholder,
+.store-root .search-bar input::placeholder {
+  color: var(--muted);
+}
+
+.store-root .search-bar input {
+  color: var(--ink);
+}
+
+.store-root .btn {
+  background: var(--ink);
+  color: var(--on-ink);
+  border: 1px solid transparent;
+}
+
+.store-root .btn:hover {
+  background: var(--ink-soft);
+  color: var(--on-ink);
+}
+
+/* Primary fill — always pair primary bg with on-primary text */
+.store-root .btn.gold {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-primary) 85%, #fff),
+    var(--color-primary)
+  );
+  color: var(--on-primary);
+  border-color: transparent;
+}
+
+.store-root .btn.gold:hover {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-primary) 75%, #fff),
+    var(--color-primary)
+  );
+  color: var(--on-primary);
+}
+
+/* Outline / secondary — never inherit ink fill from .btn */
+.store-root .btn.secondary {
+  background: transparent;
+  color: var(--secondary-text, var(--ink));
+  border: 1px solid color-mix(in srgb, var(--secondary-text, var(--ink)) 55%, var(--line-strong));
+  box-shadow: none;
+}
+
+.store-root .btn.secondary:hover {
+  background: color-mix(in srgb, var(--color-secondary) 12%, transparent);
+  color: var(--secondary-text, var(--ink));
+  border-color: var(--secondary-text, var(--ink));
+}
+
+/* Hero primary CTA — brand primary fill */
+.store-root .btn.shop-primary,
+.store-root .hero-ecom-cta .btn.shop-primary {
+  background: var(--color-primary);
+  color: var(--on-primary);
+  border-color: transparent;
+  box-shadow: 0 14px 40px color-mix(in srgb, var(--color-primary) 35%, transparent);
+}
+
+.store-root .btn.shop-primary:hover,
+.store-root .hero-ecom-cta .btn.shop-primary:hover {
+  background: color-mix(in srgb, var(--color-primary) 88%, var(--ink));
+  color: var(--on-primary);
+}
+
+.store-root .btn.shop-secondary,
+.store-root .hero-ecom-cta .btn.shop-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fffaf2;
+  border: 1px solid color-mix(in srgb, var(--color-secondary) 40%, rgba(255, 250, 242, 0.55));
+  box-shadow: none;
+}
+
+.store-root .btn.shop-secondary:hover,
+.store-root .hero-ecom-cta .btn.shop-secondary:hover {
+  background: color-mix(in srgb, var(--color-secondary) 22%, transparent);
+  color: #fffaf2;
+  border-color: color-mix(in srgb, var(--color-secondary) 50%, #fffaf2);
+}
+
+.store-root .btn.ghost {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fffaf2;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: none;
+}
+
+.store-root .store-brand span,
+.store-root .eyebrow,
+.store-root .section-head .eyebrow {
+  color: var(--secondary-text, var(--color-secondary));
+}
+
+.store-root .store-nav a:hover,
+.store-root .nav-link-btn:hover {
+  color: var(--secondary-text, var(--color-secondary));
+  background: color-mix(in srgb, var(--color-secondary) 12%, transparent);
+}
+
+.store-root .announce {
+  color: var(--on-secondary);
+}
+
+.store-root .badge {
+  background: color-mix(in srgb, var(--color-primary) 16%, var(--paper));
+  color: var(--primary-text, var(--ink));
+}
+
+.store-root .swatch {
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+
+.store-root .swatch.active {
+  background: var(--color-primary);
+  color: var(--on-primary);
+  border-color: var(--color-primary);
+}
+
+.store-root .qty-stepper {
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+
+.store-root .qty-stepper button {
+  color: var(--ink);
+}
+
+.store-root .footer-premium .badge {
+  background: color-mix(in srgb, var(--color-primary) 22%, var(--footer-bg));
+  color: var(--footer-ink);
+}
+
+.store-root .product-card .media-frame,
+.store-root .product-media,
+.store-root .cart-thumb,
+.store-root .pgallery-thumb {
+  background-color: var(--placeholder);
+}
+
+.store-root .pgallery-hint {
+  background: color-mix(in srgb, var(--paper) 92%, transparent);
+  color: var(--ink);
+}
+
+.store-root .marquee {
+  background: color-mix(in srgb, var(--paper) 70%, transparent);
+  color: var(--muted);
+}
+
+.store-root .footer-premium {
+  background: var(--footer-bg);
+  color: var(--footer-ink);
+}
+
+.store-root .footer-premium a {
+  color: var(--footer-muted);
+}
+
+.store-root .footer-premium a:hover {
+  color: var(--footer-ink);
+}
+
+.store-root .footer-premium h3 {
+  color: var(--footer-ink);
+}
+
+.store-root .footer-premium .col-title,
+.store-root .footer-bottom {
+  color: var(--footer-muted);
+}
+
+.store-root .muted,
+.store-root .compare {
+  color: var(--muted);
+}
+
+.store-root .suggest-row:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.store-root .table th,
+.store-root .table td {
+  border-bottom-color: var(--line);
+  color: var(--ink);
+}
+
+.store-root .label {
+  color: var(--ink-soft);
+}
+
+@media (max-width: 900px) {
+  .store-root .store-nav {
+    background: var(--bg);
+    color: var(--ink);
+  }
+}
+
+.hero-style-split.hero-ecom .hero-ecom-content {
+  text-align: left;
+  align-items: flex-start;
+  margin-right: auto;
+  margin-left: clamp(20px, 7vw, 80px);
+  max-width: 480px;
+}
+
+.hero-style-bold.hero-ecom .hero-ecom-content {
+  bottom: auto;
+  max-width: 920px;
+}
