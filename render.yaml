@@ -5,7 +5,7 @@ services:
     name: essas-collection
     runtime: docker
     plan: free
-    region: oregon
+    region: singapore
     branch: main
     dockerfilePath: ./Dockerfile
     dockerContext: .
