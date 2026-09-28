@@ -38,6 +38,10 @@ Thumbs.db
 .wrangler/
 ecom-frontend/.vinext/
 ecom-frontend/.wrangler/
+.dev.vars
+**/.dev.vars
+ecom-frontend/src/generated/prisma/
+ecom-frontend/prisma/schema.workers.prisma
 
 # Misc
 *.pem

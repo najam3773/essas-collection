@@ -11,3 +11,6 @@ tsconfig.tsbuildinfo
 /dist/
 .vinext/
 .wrangler/
+.dev.vars
+/src/generated/prisma/
+/prisma/schema.workers.prisma

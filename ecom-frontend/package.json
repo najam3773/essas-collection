@@ -11,11 +11,16 @@
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
     "dev:vinext": "vinext dev --port 3001",
-    "build:vinext": "vinext build",
+    "build:vinext": "npm run prisma:generate && vinext build",
     "start:vinext": "wrangler dev --config dist/server/wrangler.json",
-    "deploy:vinext": "vinext-cloudflare deploy --config dist/server/wrangler.json"
+    "deploy:vinext": "vinext-cloudflare deploy --config dist/server/wrangler.json",
+    "prisma:generate": "node scripts/generate-workers-prisma.mjs",
+    "verify:prisma-neon": "npx tsx scripts/verify-prisma-neon.ts",
+    "check:vinext": "vinext check"
   },
   "dependencies": {
+    "@prisma/adapter-neon": "^6.19.3",
+    "@prisma/client": "^6.19.3",
     "@react-three/drei": "^10.7.8",
     "@react-three/fiber": "^9.7.0",
     "@vinext/cloudflare": "^1.0.0-beta.7",
@@ -37,6 +42,7 @@
     "@vitejs/plugin-rsc": "^0.5.34",
     "eslint": "^9",
     "eslint-config-next": "15.2.4",
+    "prisma": "^6.19.3",
     "typescript": "^5",
     "vite": "^8.2.2",
     "wrangler": "^4.129.0"
