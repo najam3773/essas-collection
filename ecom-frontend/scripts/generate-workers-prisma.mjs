@@ -12,8 +12,9 @@ let schema = readFileSync(backendSchema, 'utf8');
 schema = schema.replace(
   /generator client \{[\s\S]*?\n\}/,
   `generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
   output   = "../src/generated/prisma"
+  runtime  = "cloudflare"
 }`,
 );
 if (!schema.includes('output   = "../src/generated/prisma"')) {

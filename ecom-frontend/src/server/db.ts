@@ -1,5 +1,5 @@
-import { PrismaClient } from '../generated/prisma/client.js';
 import { PrismaNeonHTTP } from '@prisma/adapter-neon';
+import { PrismaClient } from '../generated/prisma/client';
 
 type GlobalPrisma = {
   workersPrisma?: PrismaClient;

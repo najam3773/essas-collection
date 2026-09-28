@@ -15,15 +15,12 @@ export default defineConfig({
       },
     }),
   ],
-  // Local vinext only: keep Express as the API fallback. Do not proxy /uploads
-  // so catalog files in public/uploads/essa/ stay on their existing URLs.
+  // Do not proxy /api here. Migrated Route Handlers must be reachable on vinext.
+  // Express remains on http://127.0.0.1:4000 for direct fallback testing.
+  // Unmigrated /api paths are rewritten to Express via next.config.ts when
+  // STOREFRONT_API=workers.
   server: {
     proxy: {
-      "/api": {
-        target: "http://127.0.0.1:4000",
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ""),
-      },
       "/health": {
         target: "http://127.0.0.1:4000",
         changeOrigin: true,

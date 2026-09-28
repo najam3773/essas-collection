@@ -12,9 +12,10 @@ WORKDIR /app/ecom-frontend
 COPY ecom-frontend/package.json ecom-frontend/package-lock.json ./
 RUN npm ci
 COPY ecom-frontend/ ./
+COPY ecom-backend/prisma/schema.prisma /app/ecom-backend/prisma/schema.prisma
 ENV NEXT_PUBLIC_API_URL=/api
 ENV INTERNAL_API_URL=http://127.0.0.1:4000
-RUN npm run build
+RUN npm run prisma:generate && npm run build
 
 FROM node:20-alpine
 WORKDIR /app
