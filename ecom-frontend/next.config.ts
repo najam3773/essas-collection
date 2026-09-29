@@ -38,7 +38,6 @@ const nextConfig: NextConfig = {
         ? expressFallbackRewrites(origin)
         : [{ source: '/api/:path*', destination: `${origin}/:path*` }]),
       { source: '/uploads/:path*', destination: `${origin}/uploads/:path*` },
-      { source: '/health', destination: `${origin}/health` },
     ];
   },
 };

@@ -5,7 +5,7 @@ RUN npm ci
 COPY ecom-backend/ ./
 ENV DATABASE_URL=postgresql://user:pass@localhost:5432/db?schema=public
 ENV DIRECT_URL=postgresql://user:pass@localhost:5432/db?schema=public
-RUN npx prisma generate && npm run build
+RUN npx prisma generate && npm run build && npm prune --omit=dev && rm -rf node_modules/prisma
 
 FROM node:22-alpine AS frontend-build
 WORKDIR /app/ecom-frontend
@@ -30,7 +30,6 @@ COPY --from=backend-build /app/ecom-backend/package.json ./ecom-backend/package.
 COPY --from=backend-build /app/ecom-backend/package-lock.json ./ecom-backend/package-lock.json
 COPY --from=backend-build /app/ecom-backend/node_modules ./ecom-backend/node_modules
 COPY --from=backend-build /app/ecom-backend/dist ./ecom-backend/dist
-COPY --from=backend-build /app/ecom-backend/prisma ./ecom-backend/prisma
 COPY --from=backend-build /app/ecom-backend/uploads/essa ./ecom-backend/uploads/essa
 COPY --from=frontend-build /app/ecom-frontend/.next/standalone ./ecom-frontend
 COPY --from=frontend-build /app/ecom-frontend/.next/static ./ecom-frontend/.next/static

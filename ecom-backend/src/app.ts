@@ -14,7 +14,6 @@ import { statusRouter } from './routes/status.js';
 import { errorHandler } from './middleware/error.js';
 import { UPLOADS_DIR, ensureUploadsDir } from './lib/uploads.js';
 import { config } from './config.js';
-import { prisma } from './lib/db.js';
 
 export function createApp() {
   const app = express();
@@ -33,15 +32,12 @@ export function createApp() {
     }),
   );
   app.use(express.json({ limit: '2mb' }));
-  app.use(morgan('dev'));
+  if (config.nodeEnv !== 'production') {
+    app.use(morgan('dev'));
+  }
 
-  app.get('/health', async (_req, res) => {
-    try {
-      await prisma.$queryRaw`SELECT 1`;
-      res.json({ ok: true, service: 'essas-collection', db: 'up', api: 'up' });
-    } catch {
-      res.status(503).json({ ok: false, service: 'essas-collection', db: 'down' });
-    }
+  app.get('/health', (_req, res) => {
+    res.json({ ok: true, service: 'essas-collection', api: 'up' });
   });
   app.use(
     '/uploads',
