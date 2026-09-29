@@ -1,4 +1,5 @@
 import { notifyCartChanged } from './cart';
+import { getCustomerToken } from './store-auth';
 
 const API_PREFIX = (process.env.NEXT_PUBLIC_API_URL || '/api').replace(/\/+$/, '') || '/api';
 
@@ -18,7 +19,8 @@ export async function api<T = unknown>(path: string, opts: ApiOptions = {}): Pro
   const method = opts.method || (opts.body ? 'POST' : 'GET');
   const headers: Record<string, string> = {};
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
-  if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
+  const token = opts.token !== undefined ? opts.token : getCustomerToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
   if (opts.cartSession) headers['x-cart-session'] = opts.cartSession;
 
   const res = await fetch(`${API_PREFIX}${path}`, {

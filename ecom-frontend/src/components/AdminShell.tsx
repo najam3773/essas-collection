@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { api, setStoreCurrency } from '@/lib/api';
 
 type Boot = {
@@ -22,6 +22,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const [q, setQ] = useState('');
   const [collapsed, setCollapsed] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
+  const openBtnRef = useRef<HTMLButtonElement>(null);
+  const closeBtnRef = useRef<HTMLButtonElement>(null);
+  const drawerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const token = localStorage.getItem('staff_token');
@@ -35,6 +38,46 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       .then((s) => setStoreCurrency(s.currency || 'USD'))
       .catch(() => undefined);
   }, [router]);
+
+  useEffect(() => {
+    setMobileNav(false);
+  }, [path]);
+
+  useEffect(() => {
+    if (!mobileNav) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    closeBtnRef.current?.focus();
+
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setMobileNav(false);
+        return;
+      }
+      if (e.key !== 'Tab' || !drawerRef.current) return;
+      const focusable = drawerRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])',
+      );
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.removeEventListener('keydown', onKey);
+      openBtnRef.current?.focus();
+    };
+  }, [mobileNav]);
 
   const groups: NavGroup[] = useMemo(() => {
     if (!boot) return [];
@@ -117,8 +160,19 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className={`ops-shell ${collapsed ? 'is-collapsed' : ''} ${mobileNav ? 'mobile-nav-open' : ''}`}>
-      {mobileNav && <button type="button" className="ops-backdrop" aria-label="Close navigation" onClick={() => setMobileNav(false)} />}
-      <aside className="ops-side">
+      {mobileNav && (
+        <button
+          type="button"
+          className="ops-backdrop"
+          aria-label="Close navigation"
+          onClick={() => setMobileNav(false)}
+        />
+      )}
+      <aside
+        ref={drawerRef}
+        id="admin-nav-drawer"
+        className="ops-side"
+      >
         <div className="ops-brand">
           <div>
             <strong>{boot.tenant.name}</strong>
@@ -127,12 +181,18 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           <button type="button" className="ops-icon-btn desktop-only" onClick={() => setCollapsed((v) => !v)} aria-label="Toggle menu">
             ☰
           </button>
-          <button type="button" className="ops-icon-btn mobile-only" onClick={() => setMobileNav(false)} aria-label="Close menu">
+          <button
+            ref={closeBtnRef}
+            type="button"
+            className="ops-icon-btn mobile-only"
+            onClick={() => setMobileNav(false)}
+            aria-label="Close menu"
+          >
             ✕
           </button>
         </div>
 
-        <nav className="ops-nav">
+        <nav className="ops-nav" aria-label="Admin">
           {groups.map((group) => {
             const items = group.items.filter((i) => i.show !== false);
             if (!items.length) return null;
@@ -174,10 +234,18 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
       <div className="ops-main">
         <header className="ops-top">
-          <button type="button" className="ops-icon-btn mobile-only ops-open-nav" onClick={() => setMobileNav(true)} aria-label="Open menu">
+          <button
+            ref={openBtnRef}
+            type="button"
+            className="ops-icon-btn mobile-only ops-open-nav"
+            onClick={() => setMobileNav(true)}
+            aria-label="Open menu"
+            aria-expanded={mobileNav}
+            aria-controls="admin-nav-drawer"
+          >
             ☰
           </button>
-          <div>
+          <div className="ops-title-block">
             <p className="eyebrow" style={{ margin: 0 }}>Merchant admin</p>
             <h1 className="ops-page-title">{activeLabel}</h1>
           </div>
@@ -186,6 +254,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search products, orders, customers…"
+              aria-label="Search admin"
             />
             <button className="btn sm gold" type="submit">Search</button>
           </form>

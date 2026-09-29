@@ -221,7 +221,7 @@ export default function ProductEditorPage() {
           <textarea className="textarea" name="seoDescription" rows={3} placeholder="SEO description" defaultValue={product.seoDescription || ''} />
         </div>
 
-        <div className="card">
+        <div className="card table-scroll">
           <h2>Variants & inventory</h2>
           <table className="table">
             <thead>

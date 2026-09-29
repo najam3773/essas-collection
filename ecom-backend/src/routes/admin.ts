@@ -39,7 +39,7 @@ adminRouter.get('/products', requireFeatures('catalog.products'), async (req, re
   try {
     const products = await prisma.product.findMany({
       where: { tenantId: tid(req) },
-      include: { variants: true, category: true },
+      include: { variants: { include: { inventory: true } }, category: true },
       orderBy: { updatedAt: 'desc' },
     });
     res.json(products);
@@ -330,7 +330,13 @@ adminRouter.patch(
       const existing = assertFound(
         await prisma.order.findFirst({ where: { id: req.params.id, tenantId: tid(req) } }),
       );
-      res.json(await prisma.order.update({ where: { id: existing.id }, data: { status: body.status } }));
+      res.json(
+        await prisma.order.update({
+          where: { id: existing.id },
+          data: { status: body.status },
+          include: { lines: true, customer: true, payments: true },
+        }),
+      );
     } catch (e) {
       next(e);
     }

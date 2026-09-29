@@ -17,7 +17,7 @@ type Product = {
   tags?: string[];
   media?: ProductMedia[] | null;
   category?: { id: string; name: string } | null;
-  variants: Array<{ sku: string; priceCents: number }>;
+  variants: Array<{ sku: string; priceCents: number; inventory?: Array<{ quantity: number }> }>;
 };
 
 function primaryProductImageUrl(media: Product['media']): string | undefined {
@@ -140,11 +140,10 @@ export default function AdminProductsPage() {
   }
 
   return (
-    <main className="shell">
-      <Link href="/admin" className="muted">← Dashboard</Link>
-      <div className="row" style={{ justifyContent: 'space-between', marginTop: 0 }}>
+    <>
+      <div className="row admin-page-head" style={{ justifyContent: 'space-between', marginTop: 0 }}>
         <h1>Products</h1>
-        <div className="row">
+        <div className="row admin-toolbar">
           <Link className="btn secondary sm" href="/admin/categories">
             Categories
           </Link>
@@ -222,7 +221,38 @@ export default function AdminProductsPage() {
           <button className="btn">Create</button>
         </form>
       )}
-      <div className="card table-scroll">
+      <div className="admin-card-list">
+        {products.map((p) => {
+          const piece =
+            p.pieceType === 'ONE_PIECE' ? '1 Piece'
+              : p.pieceType === 'TWO_PIECE' ? '2 Piece'
+                : p.pieceType === 'THREE_PIECE' ? '3 Piece'
+                  : p.pieceType === 'DUPATTA' ? 'Dupatta'
+                    : '—';
+          const stock = p.variants.reduce((n, v) => n + (v.inventory?.[0]?.quantity || 0), 0);
+          return (
+            <article key={p.id} className="admin-entity-card admin-product-card">
+              <ProductThumb key={p.id} url={primaryProductImageUrl(p.media)} />
+              <div className="admin-product-card-body">
+                <div className="admin-entity-card-head">
+                  <Link href={`/admin/products/${p.id}`}><strong>{p.name}</strong></Link>
+                  <span className="badge">{p.status}</span>
+                </div>
+                <div className="admin-entity-meta">
+                  <span>{p.variants[0] ? money(p.variants[0].priceCents) : '—'}</span>
+                  <span className="muted">Stock {stock}</span>
+                  <span className="muted">{p.category?.name || '—'} · {piece}</span>
+                </div>
+                <div className="admin-entity-actions">
+                  <Link className="btn sm" href={`/admin/products/${p.id}`}>Edit</Link>
+                  <button className="btn sm secondary" onClick={() => removeProduct(p.id)}>Delete</button>
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+      <div className="card table-scroll admin-desktop-table">
         <table className="table">
           <thead>
             <tr>
@@ -254,12 +284,15 @@ export default function AdminProductsPage() {
                 <td><span className="badge">{p.status}</span></td>
                 <td>{p.variants[0] ? money(p.variants[0].priceCents) : '—'}</td>
                 <td className="muted">{p.variants.map((v) => v.sku).join(', ')}</td>
-                <td><button className="btn sm secondary" onClick={() => removeProduct(p.id)}>Delete</button></td>
+                <td>
+                  <Link className="btn sm" href={`/admin/products/${p.id}`}>Edit</Link>
+                  <button className="btn sm secondary" onClick={() => removeProduct(p.id)}>Delete</button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-    </main>
+    </>
   );
 }

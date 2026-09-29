@@ -217,8 +217,11 @@ const checkoutBody = z.object({
   email: z.string().email().optional(),
   couponCode: z.string().optional(),
   giftNote: z.string().optional(),
-  shippingAddress: storefrontAddress,
-  mockPay: z.boolean().default(true),
+  addressId: z.string().uuid().optional(),
+  saveAddress: z.boolean().optional(),
+  contactName: z.string().optional(),
+  contactPhone: z.string().optional(),
+  shippingAddress: storefrontAddress.optional(),
 });
 
 export async function checkout(body: unknown, customerId?: string) {
@@ -233,7 +236,8 @@ export async function checkout(body: unknown, customerId?: string) {
   );
   if (!cart.items.length) throw new AppError(400, 'Cart is empty');
 
-  let resolvedCustomerId = customerId || cart.customerId || undefined;
+  // Authenticated identity always wins. Never bind from cart.customerId or client email when signed in.
+  let resolvedCustomerId = customerId || undefined;
   if (!resolvedCustomerId && parsed.email) {
     const existingCustomer = await prisma.customer.findUnique({
       where: { tenantId_email: { tenantId, email: parsed.email } },
@@ -249,11 +253,69 @@ export async function checkout(body: unknown, customerId?: string) {
     }
   }
 
+  let shippingSource = parsed.shippingAddress;
+  if (parsed.addressId) {
+    if (!customerId) throw new AppError(401, 'Sign in to use a saved address');
+    const saved = await prisma.customerAddress.findFirst({
+      where: { id: parsed.addressId, tenantId, customerId },
+    });
+    if (!saved) throw new AppError(403, 'That address does not belong to this account');
+    shippingSource = {
+      line1: saved.line1,
+      line2: saved.line2 || undefined,
+      city: saved.city,
+      state: saved.state || undefined,
+      postalCode: saved.postalCode,
+      country: saved.country || 'Pakistan',
+    };
+  }
+  if (!shippingSource) throw new AppError(400, 'Shipping address is required');
+
+  let profile: { fullName: string | null; phone: string | null } | undefined;
+  if (customerId) {
+    profile =
+      (await prisma.customer.findFirst({
+        where: { id: customerId, tenantId },
+        select: { fullName: true, phone: true },
+      })) ?? undefined;
+  }
+  const shippingAddress = {
+    ...shippingSource,
+    country: shippingSource.country || 'Pakistan',
+    postalCode: shippingSource.postalCode || '',
+    ...(parsed.contactName || profile?.fullName
+      ? { fullName: parsed.contactName || profile?.fullName || undefined }
+      : {}),
+    ...(parsed.contactPhone || profile?.phone
+      ? { phone: parsed.contactPhone || profile?.phone || undefined }
+      : {}),
+  };
+
+  if (parsed.saveAddress && customerId) {
+    await prisma.customerAddress.updateMany({
+      where: { customerId, tenantId },
+      data: { isDefault: false },
+    });
+    await prisma.customerAddress.create({
+      data: {
+        tenantId,
+        customerId,
+        line1: shippingAddress.line1,
+        line2: shippingAddress.line2,
+        city: shippingAddress.city,
+        state: shippingAddress.state,
+        postalCode: shippingAddress.postalCode || '',
+        country: shippingAddress.country || 'Pakistan',
+        isDefault: true,
+      },
+    });
+  }
+
   const subtotal = cart.items.reduce((s, i) => s + i.unitPriceCents * i.quantity, 0);
   const pricing = await computePricing({
     tenantId,
     subtotalCents: subtotal,
-    country: parsed.shippingAddress.country,
+    country: shippingAddress.country,
     couponCode: parsed.couponCode,
   });
   const {
@@ -284,7 +346,7 @@ export async function checkout(body: unknown, customerId?: string) {
   const orderNumber = `ORD-${Date.now().toString(36).toUpperCase()}`;
   const currency = storeSettings?.currency || cart.currency || 'USD';
   const notes = pricing.autoRuleName ? `Promo: ${pricing.autoRuleName}` : null;
-  const shippingJson = JSON.stringify(parsed.shippingAddress);
+  const shippingJson = JSON.stringify(shippingAddress);
   const orderId = await insertId(Prisma.sql`
     INSERT INTO orders (
       tenant_id, customer_id, order_number, status, currency,
@@ -293,7 +355,7 @@ export async function checkout(body: unknown, customerId?: string) {
     )
     VALUES (
       ${tenantId}::uuid, ${resolvedCustomerId ?? null}::uuid, ${orderNumber},
-      ${parsed.mockPay ? 'paid' : 'pending'}, ${currency},
+      ${'pending'}, ${currency},
       ${subtotal}, ${shipping}, ${tax}, ${discount}, ${total},
       ${couponCode || null}, ${parsed.giftNote || null}, ${shippingJson}::jsonb, ${notes}
     )
@@ -319,7 +381,7 @@ export async function checkout(body: unknown, customerId?: string) {
     INSERT INTO payments (tenant_id, order_id, provider, provider_ref, amount_cents, status, metadata)
     VALUES (
       ${tenantId}::uuid, ${orderId}::uuid, 'cod', ${`cod_${crypto.randomUUID()}`},
-      ${total}, ${parsed.mockPay ? 'succeeded' : 'pending'}, ${payMeta}::jsonb
+      ${total}, ${'pending'}, ${payMeta}::jsonb
     )
     RETURNING id
   `);

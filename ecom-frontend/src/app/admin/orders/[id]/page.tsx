@@ -17,7 +17,7 @@ type Order = {
   couponCode?: string | null;
   giftNote?: string | null;
   shippingAddress?: Record<string, string>;
-  customer?: { email: string; fullName?: string } | null;
+  customer?: { email: string; fullName?: string; phone?: string | null } | null;
   lines: Array<{ productName: string; sku: string; quantity: number; unitPriceCents: number }>;
   shipments: Array<{ carrier?: string; trackingNumber?: string; trackingUrl?: string; status: string }>;
   payments: Array<{ status: string; provider: string; amountCents: number }>;
@@ -65,7 +65,7 @@ export default function OrderDetailPage() {
   return (
     <>
       <Link href="/admin/orders" className="muted">← Orders</Link>
-      <div className="row" style={{ justifyContent: 'space-between', marginTop: 12 }}>
+      <div className="row admin-page-head" style={{ justifyContent: 'space-between', marginTop: 12 }}>
         <div>
           <h1>Order {order.orderNumber}</h1>
           <span className="badge">{order.status}</span>
@@ -109,13 +109,20 @@ export default function OrderDetailPage() {
         <div className="stack">
           <div className="card stack">
             <h2>Customer</h2>
-            <div>{order.customer?.fullName || 'Guest'}</div>
+            <div>{order.customer?.fullName || order.shippingAddress?.fullName || 'Guest'}</div>
             <div className="muted">{order.customer?.email || '—'}</div>
+            {(order.customer?.phone || order.shippingAddress?.phone) && (
+              <div>{order.customer?.phone || order.shippingAddress?.phone}</div>
+            )}
             {order.shippingAddress && (
               <div className="muted">
+                <strong>Ship to this order</strong><br />
+                {order.shippingAddress.fullName && <>{order.shippingAddress.fullName}<br /></>}
                 {order.shippingAddress.line1}<br />
-                {order.shippingAddress.city} {order.shippingAddress.postalCode}<br />
+                {order.shippingAddress.line2 && <>{order.shippingAddress.line2}<br /></>}
+                {order.shippingAddress.city}{order.shippingAddress.state ? `, ${order.shippingAddress.state}` : ''} {order.shippingAddress.postalCode}<br />
                 {order.shippingAddress.country}
+                {order.shippingAddress.phone && <><br />{order.shippingAddress.phone}</>}
               </div>
             )}
             {order.giftNote && <p><strong>Gift note:</strong> {order.giftNote}</p>}

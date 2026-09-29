@@ -13,4 +13,6 @@ export const storefrontAddressSchema = z.object({
   state: z.string().optional(),
   postalCode: optionalBlank,
   country: optionalBlank.transform(() => STORE_COUNTRY),
+  fullName: z.string().trim().optional(),
+  phone: z.string().trim().optional(),
 });

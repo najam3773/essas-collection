@@ -15,7 +15,8 @@ type Dash = {
     orderNumber: string;
     status: string;
     totalCents: number;
-    customer?: { email: string } | null;
+    createdAt?: string;
+    customer?: { email?: string; fullName?: string | null } | null;
   }>;
 };
 
@@ -38,7 +39,7 @@ export default function AdminHome() {
 
   return (
     <>
-      <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
+      <div className="row admin-page-head" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
         <div>
           <p className="eyebrow">Today</p>
           <h2 style={{ margin: 0, fontSize: '1.8rem' }}>
@@ -83,7 +84,26 @@ export default function AdminHome() {
             <h2>Recent orders</h2>
             <Link href="/admin/orders" className="btn sm secondary">View all</Link>
           </div>
-          <table className="table">
+          <div className="admin-card-list">
+            {dash.recentOrders.map((o) => (
+              <article key={o.id} className="admin-entity-card">
+                <div className="admin-entity-card-head">
+                  <Link href={`/admin/orders/${o.id}`}><strong>{o.orderNumber}</strong></Link>
+                  <span className="badge">{o.status}</span>
+                </div>
+                <div className="admin-entity-meta">
+                  <span>{o.customer?.fullName || o.customer?.email || 'Guest'}</span>
+                  <span className="muted">{o.customer?.email || '—'}</span>
+                  <span>{money(o.totalCents)}</span>
+                </div>
+                <div className="admin-entity-actions">
+                  <Link className="btn sm secondary" href={`/admin/orders/${o.id}`}>View</Link>
+                </div>
+              </article>
+            ))}
+            {!dash.recentOrders.length && <p className="muted">No orders yet</p>}
+          </div>
+          <table className="table admin-desktop-table">
             <thead>
               <tr><th>Order</th><th>Customer</th><th>Status</th><th>Total</th></tr>
             </thead>
@@ -91,7 +111,7 @@ export default function AdminHome() {
               {dash.recentOrders.map((o) => (
                 <tr key={o.id}>
                   <td><Link href={`/admin/orders/${o.id}`}>{o.orderNumber}</Link></td>
-                  <td>{o.customer?.email || 'Guest'}</td>
+                  <td>{o.customer?.fullName || o.customer?.email || 'Guest'}</td>
                   <td><span className="badge">{o.status}</span></td>
                   <td>{money(o.totalCents)}</td>
                 </tr>

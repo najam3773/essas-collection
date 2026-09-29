@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 
@@ -16,10 +15,22 @@ export default function AdminCustomersPage() {
   }, [router]);
 
   return (
-    <main className="shell">
-      <Link href="/admin" className="muted">← Dashboard</Link>
-      <h1 style={{ marginTop: 16 }}>Customers</h1>
-      <div className="card" style={{ marginTop: 20 }}>
+    <>
+      <h1 style={{ marginTop: 0 }}>Customers</h1>
+      <div className="admin-card-list">
+        {customers.map((c) => (
+          <article key={c.id} className="admin-entity-card">
+            <div className="admin-entity-card-head">
+              <strong>{c.fullName || '—'}</strong>
+            </div>
+            <div className="admin-entity-meta">
+              <span>{c.email}</span>
+              <span className="muted">Joined {new Date(c.createdAt).toLocaleDateString()}</span>
+            </div>
+          </article>
+        ))}
+      </div>
+      <div className="card table-scroll admin-desktop-table" style={{ marginTop: 20 }}>
         <table className="table">
           <thead><tr><th>Name</th><th>Email</th><th>Joined</th></tr></thead>
           <tbody>
@@ -33,6 +44,6 @@ export default function AdminCustomersPage() {
           </tbody>
         </table>
       </div>
-    </main>
+    </>
   );
 }

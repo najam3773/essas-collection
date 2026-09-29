@@ -33,7 +33,39 @@ export default function InventoryPage() {
     <>
       <h1>Inventory</h1>
       <p className="muted">Track stock per SKU / location</p>
-      <div className="card" style={{ marginTop: 16 }}>
+      <div className="admin-card-list">
+        {items.map((i) => (
+          <article key={i.id} className="admin-entity-card">
+            <div className="admin-entity-card-head">
+              <strong>{i.variant.product.name}</strong>
+            </div>
+            <div className="admin-entity-meta">
+              <span className="muted">{i.variant.sku}</span>
+              <span>Qty {i.quantity}</span>
+              <span className="muted">{i.locationCode} · reserved {i.reserved}</span>
+            </div>
+            <div className="admin-entity-actions">
+              <input
+                className="input"
+                style={{ width: 90 }}
+                type="number"
+                defaultValue={i.quantity}
+                id={`qty-m-${i.id}`}
+              />
+              <button
+                className="btn sm"
+                onClick={() => {
+                  const el = document.getElementById(`qty-m-${i.id}`) as HTMLInputElement;
+                  save(i.id, Number(el.value));
+                }}
+              >
+                Update
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+      <div className="card table-scroll admin-desktop-table" style={{ marginTop: 16 }}>
         <table className="table">
           <thead>
             <tr><th>Product</th><th>SKU</th><th>Location</th><th>Qty</th><th>Reserved</th><th></th></tr>

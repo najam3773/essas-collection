@@ -5,7 +5,13 @@ import { prisma } from '../lib/db.js';
 import { resolveTenant, requireTenant } from '../middleware/tenant.js';
 import { AppError, assertFound } from '../lib/errors.js';
 import { hashPassword, signToken } from '../lib/auth.js';
-import { requireAuth } from '../middleware/auth.js';
+import { optionalAuth, requireAuth } from '../middleware/auth.js';
+import {
+  assertAddressOwned,
+  codCheckoutSettlement,
+  orderCustomerIdFromAuth,
+  snapshotShippingAddress,
+} from '../lib/checkout-identity.js';
 import { saleUnitPriceCents } from '../lib/sale-pricing.js';
 import { storefrontAddressSchema } from '../lib/storefront-address.js';
 
@@ -123,17 +129,28 @@ storefrontRouter.get('/categories', requireTenant, async (req, res, next) => {
 });
 
 async function getOrCreateCart(tenantId: string, sessionToken?: string, customerId?: string) {
+  const include = { items: { include: { variant: { include: { product: true } } } } } as const;
   if (customerId) {
     let cart = await prisma.cart.findFirst({
       where: { tenantId, customerId },
-      include: { items: { include: { variant: { include: { product: true } } } } },
+      include,
       orderBy: { updatedAt: 'desc' },
     });
+    const sessionCart = sessionToken
+      ? await prisma.cart.findFirst({ where: { tenantId, sessionToken }, include })
+      : null;
+    if ((!cart || !cart.items.length) && sessionCart?.items.length && sessionCart.id !== cart?.id) {
+      cart = await prisma.cart.update({
+        where: { id: sessionCart.id },
+        data: { customerId },
+        include,
+      });
+    }
     if (!cart) {
       const settings = await prisma.storeSettings.findUnique({ where: { tenantId } });
       cart = await prisma.cart.create({
         data: { tenantId, customerId, currency: settings?.currency || 'USD' },
-        include: { items: { include: { variant: { include: { product: true } } } } },
+        include,
       });
     }
     return cart;
@@ -153,7 +170,7 @@ async function getOrCreateCart(tenantId: string, sessionToken?: string, customer
   return cart;
 }
 
-storefrontRouter.get('/cart', requireTenant, async (req, res, next) => {
+storefrontRouter.get('/cart', requireTenant, optionalAuth('customer'), async (req, res, next) => {
   try {
     const sessionToken = (req.headers['x-cart-session'] as string) || undefined;
     const customerId = req.auth?.realm === 'customer' ? req.auth.sub : undefined;
@@ -164,7 +181,7 @@ storefrontRouter.get('/cart', requireTenant, async (req, res, next) => {
   }
 });
 
-storefrontRouter.post('/cart/items', requireTenant, async (req, res, next) => {
+storefrontRouter.post('/cart/items', requireTenant, optionalAuth('customer'), async (req, res, next) => {
   try {
     const body = z
       .object({ variantId: z.string().uuid(), quantity: z.number().int().positive().default(1) })
@@ -181,7 +198,8 @@ storefrontRouter.post('/cart/items', requireTenant, async (req, res, next) => {
       { id: variant.product.id, categoryId: variant.product.categoryId },
       variant.priceCents,
     );
-    const cart = await getOrCreateCart(req.tenantId!, sessionToken);
+    const customerId = req.auth?.realm === 'customer' ? req.auth.sub : undefined;
+    const cart = await getOrCreateCart(req.tenantId!, sessionToken, customerId);
     const existing = await prisma.cartItem.findUnique({
       where: { cartId_variantId: { cartId: cart.id, variantId: variant.id } },
     });
@@ -211,7 +229,7 @@ storefrontRouter.post('/cart/items', requireTenant, async (req, res, next) => {
   }
 });
 
-storefrontRouter.patch('/cart/items/:id', requireTenant, async (req, res, next) => {
+storefrontRouter.patch('/cart/items/:id', requireTenant, optionalAuth('customer'), async (req, res, next) => {
   try {
     const body = z.object({ quantity: z.number().int().nonnegative() }).parse(req.body);
     const item = assertFound(
@@ -232,7 +250,7 @@ storefrontRouter.patch('/cart/items/:id', requireTenant, async (req, res, next) 
   }
 });
 
-storefrontRouter.post('/checkout', requireTenant, async (req, res, next) => {
+storefrontRouter.post('/checkout', requireTenant, optionalAuth('customer'), async (req, res, next) => {
   try {
     const body = z
       .object({
@@ -240,8 +258,11 @@ storefrontRouter.post('/checkout', requireTenant, async (req, res, next) => {
         email: z.string().email().optional(),
         couponCode: z.string().optional(),
         giftNote: z.string().optional(),
-        shippingAddress: storefrontAddressSchema,
-        mockPay: z.boolean().default(true),
+        addressId: z.string().uuid().optional(),
+        saveAddress: z.boolean().optional(),
+        shippingAddress: storefrontAddressSchema.optional(),
+        contactName: z.string().optional(),
+        contactPhone: z.string().optional(),
       })
       .parse(req.body);
 
@@ -253,7 +274,8 @@ storefrontRouter.post('/checkout', requireTenant, async (req, res, next) => {
     );
     if (!cart.items.length) throw new AppError(400, 'Cart is empty');
 
-    let customerId = req.auth?.realm === 'customer' ? req.auth.sub : cart.customerId;
+    const authCustomerId = orderCustomerIdFromAuth(req.auth);
+    let customerId = authCustomerId;
     if (!customerId && body.email) {
       const customer = await prisma.customer.upsert({
         where: { tenantId_email: { tenantId: req.tenantId!, email: body.email } },
@@ -263,12 +285,72 @@ storefrontRouter.post('/checkout', requireTenant, async (req, res, next) => {
       customerId = customer.id;
     }
 
+    let profile:
+      | { fullName: string | null; phone: string | null; email: string }
+      | undefined;
+    if (authCustomerId) {
+      profile = await prisma.customer.findFirst({
+        where: { id: authCustomerId, tenantId: req.tenantId! },
+        select: { fullName: true, phone: true, email: true },
+      }) ?? undefined;
+    }
+
+    let shippingSource = body.shippingAddress;
+    if (body.addressId) {
+      if (!authCustomerId) throw new AppError(401, 'Sign in to use a saved address');
+      const saved = await prisma.customerAddress.findFirst({
+        where: { id: body.addressId, tenantId: req.tenantId! },
+      });
+      try {
+        assertAddressOwned(saved, authCustomerId);
+      } catch {
+        throw new AppError(403, 'That address does not belong to this account');
+      }
+      if (!saved) throw new AppError(403, 'That address does not belong to this account');
+      shippingSource = {
+        line1: saved.line1,
+        line2: saved.line2 || undefined,
+        city: saved.city,
+        state: saved.state || undefined,
+        postalCode: saved.postalCode,
+        country: saved.country,
+        fullName: body.shippingAddress?.fullName,
+        phone: body.shippingAddress?.phone,
+      };
+    }
+    if (!shippingSource) throw new AppError(400, 'Shipping address is required');
+
+    const shippingAddress = snapshotShippingAddress(shippingSource, {
+      fullName: body.contactName || shippingSource.fullName || profile?.fullName,
+      phone: body.contactPhone || shippingSource.phone || profile?.phone,
+    });
+
+    if (body.saveAddress && authCustomerId) {
+      await prisma.customerAddress.updateMany({
+        where: { customerId: authCustomerId, tenantId: req.tenantId! },
+        data: { isDefault: false },
+      });
+      await prisma.customerAddress.create({
+        data: {
+          tenantId: req.tenantId!,
+          customerId: authCustomerId,
+          line1: shippingAddress.line1,
+          line2: shippingAddress.line2,
+          city: shippingAddress.city,
+          state: shippingAddress.state,
+          postalCode: shippingAddress.postalCode,
+          country: shippingAddress.country,
+          isDefault: true,
+        },
+      });
+    }
+
     const subtotal = cart.items.reduce((s, i) => s + i.unitPriceCents * i.quantity, 0);
     const { computePricing } = await import('./advanced.js');
     const pricing = await computePricing({
       tenantId: req.tenantId!,
       subtotalCents: subtotal,
-      country: body.shippingAddress.country,
+      country: shippingAddress.country,
       couponCode: body.couponCode,
     });
     const { shippingCents: shipping, taxCents: tax, discountCents: discount, totalCents: total, couponCode } = pricing;
@@ -280,6 +362,7 @@ storefrontRouter.post('/checkout', requireTenant, async (req, res, next) => {
       couponId = coupon?.id;
     }
     const orderNumber = `ORD-${Date.now().toString(36).toUpperCase()}`;
+    const settlement = codCheckoutSettlement();
 
     const storeSettings = await prisma.storeSettings.findUnique({ where: { tenantId: req.tenantId! } });
     const order = await prisma.$transaction(async (tx) => {
@@ -288,7 +371,7 @@ storefrontRouter.post('/checkout', requireTenant, async (req, res, next) => {
           tenantId: req.tenantId!,
           customerId,
           orderNumber,
-          status: body.mockPay ? 'paid' : 'pending',
+          status: settlement.orderStatus,
           currency: storeSettings?.currency || cart.currency || 'USD',
           subtotalCents: subtotal,
           shippingCents: shipping,
@@ -297,7 +380,7 @@ storefrontRouter.post('/checkout', requireTenant, async (req, res, next) => {
           couponCode: couponCode || undefined,
           giftNote: body.giftNote,
           totalCents: total,
-          shippingAddress: body.shippingAddress,
+          shippingAddress,
           notes: pricing.autoRuleName ? `Promo: ${pricing.autoRuleName}` : undefined,
           lines: {
             create: cart.items.map((i) => ({
@@ -313,15 +396,15 @@ storefrontRouter.post('/checkout', requireTenant, async (req, res, next) => {
           payments: {
             create: {
               tenantId: req.tenantId!,
-              provider: 'cod',
+              provider: settlement.provider,
               providerRef: `cod_${randomUUID()}`,
               amountCents: total,
-              status: body.mockPay ? 'succeeded' : 'pending',
+              status: settlement.paymentStatus,
               metadata: { discountCents: discount, couponId, autoRule: pricing.autoRuleName },
             },
           },
         },
-        include: { lines: true, payments: true },
+        include: { lines: true, payments: true, customer: true },
       });
 
       if (couponId) {

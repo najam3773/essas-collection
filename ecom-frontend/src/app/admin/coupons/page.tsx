@@ -76,7 +76,7 @@ export default function CouponsPage() {
         </div>
         <button className="btn">Create coupon</button>
       </form>
-      <div className="card" style={{ marginTop: 16 }}>
+      <div className="card table-scroll" style={{ marginTop: 16 }}>
         <table className="table">
           <thead><tr><th>Code</th><th>Type</th><th>Value</th><th>Used</th><th>Status</th><th></th></tr></thead>
           <tbody>

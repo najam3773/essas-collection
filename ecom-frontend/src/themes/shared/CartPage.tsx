@@ -1,9 +1,10 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { api, getCartSession, money } from '@/lib/api';
+import { getCustomerToken } from '@/lib/store-auth';
 
 type Cart = {
   id: string;
@@ -27,6 +28,29 @@ type Quote = {
   giftNotesEnabled?: boolean;
 };
 
+type SavedAddress = {
+  id: string;
+  line1: string;
+  line2?: string | null;
+  city: string;
+  state?: string | null;
+  postalCode?: string | null;
+  country: string;
+  isDefault?: boolean;
+};
+
+type Account = {
+  email: string;
+  fullName?: string | null;
+  phone?: string | null;
+  addresses: SavedAddress[];
+};
+
+function pickCheckoutAddress(addresses: SavedAddress[]): SavedAddress | undefined {
+  if (!addresses.length) return undefined;
+  return addresses.find((a) => a.isDefault) || (addresses.length === 1 ? addresses[0] : undefined);
+}
+
 export default function CartPage() {
   const { tenant } = useParams<{ tenant: string }>();
   const searchParams = useSearchParams();
@@ -40,6 +64,23 @@ export default function CartPage() {
   const [order, setOrder] = useState<{ orderNumber: string; totalCents: number } | null>(null);
   const [error, setError] = useState('');
   const [recoverNote, setRecoverNote] = useState('');
+  const [account, setAccount] = useState<Account | null>(null);
+  const [selectedAddressId, setSelectedAddressId] = useState<string>('new');
+  const [saveAddress, setSaveAddress] = useState(false);
+  const [line1, setLine1] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [contactName, setContactName] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [email, setEmail] = useState('');
+
+  const savedAddresses = account?.addresses || [];
+  const usingSaved = selectedAddressId !== 'new' && savedAddresses.some((a) => a.id === selectedAddressId);
+  const selectedSaved = useMemo(
+    () => savedAddresses.find((a) => a.id === selectedAddressId),
+    [savedAddresses, selectedAddressId],
+  );
 
   async function load() {
     const c = await api<Cart>('/storefront/cart', {
@@ -57,10 +98,30 @@ export default function CartPage() {
   useEffect(() => {
     const recover = searchParams.get('recover');
     async function boot() {
+      const token = getCustomerToken(tenant);
+      if (token) {
+        try {
+          const me = await api<Account>('/storefront/account', { token });
+          setAccount(me);
+          setEmail(me.email || '');
+          setContactName(me.fullName || '');
+          setContactPhone(me.phone || '');
+          const picked = pickCheckoutAddress(me.addresses || []);
+          if (picked) {
+            setSelectedAddressId(picked.id);
+            setLine1(picked.line1);
+            setCity(picked.city);
+            setState(picked.state || '');
+            setPostalCode(picked.postalCode || '');
+          }
+        } catch {
+          setAccount(null);
+        }
+      }
       if (recover) {
         const recovered = await api<{ sessionToken?: string; items: unknown[] }>(
           `/storefront/cart/recover/${recover}`,
-          {  },
+          { },
         );
         if (recovered.sessionToken) {
           localStorage.setItem('cart_session', recovered.sessionToken);
@@ -78,6 +139,25 @@ export default function CartPage() {
     }
     boot().catch((e) => setError(e.message));
   }, [tenant, searchParams]);
+
+  function applySavedAddress(id: string) {
+    setSelectedAddressId(id);
+    if (id === 'new') {
+      setLine1('');
+      setCity('');
+      setState('');
+      setPostalCode('');
+      setSaveAddress(true);
+      return;
+    }
+    const addr = savedAddresses.find((a) => a.id === id);
+    if (!addr) return;
+    setLine1(addr.line1);
+    setCity(addr.city);
+    setState(addr.state || '');
+    setPostalCode(addr.postalCode || '');
+    setSaveAddress(false);
+  }
 
   async function lookupGift() {
     if (!giftCard) return;
@@ -108,21 +188,28 @@ export default function CartPage() {
     e.preventDefault();
     if (!cart) return;
     const fd = new FormData(e.currentTarget);
+    const token = getCustomerToken(tenant);
     try {
       const result = await api<{ orderNumber: string; totalCents: number }>('/storefront/checkout', {
         cartSession: getCartSession(),
+        token: token || undefined,
         body: {
           cartId: cart.id,
-          email: fd.get('email'),
+          email: token ? undefined : fd.get('email'),
           couponCode: coupon || undefined,
-          mockPay: true,
           giftNote: fd.get('giftNote') || undefined,
+          contactName: contactName || undefined,
+          contactPhone: contactPhone || undefined,
+          addressId: usingSaved ? selectedAddressId : undefined,
+          saveAddress: Boolean(token) && !usingSaved && saveAddress,
           shippingAddress: {
-            line1: fd.get('line1'),
-            city: fd.get('city'),
-            state: fd.get('state'),
-            postalCode: String(fd.get('postalCode') || '').trim(),
+            line1,
+            city,
+            state: state || undefined,
+            postalCode: postalCode.trim(),
             country: 'Pakistan',
+            fullName: contactName || undefined,
+            phone: contactPhone || undefined,
           },
         },
       });
@@ -144,6 +231,7 @@ export default function CartPage() {
           <p className="eyebrow">Confirmed</p>
           <h2 style={{ fontSize: '2.4rem' }}>Thank you</h2>
           <p>Order <strong>#{order.orderNumber}</strong> is confirmed.</p>
+          <p className="muted">Cash on Delivery — pay when your order arrives.</p>
           <p className="pdp-price">{money(order.totalCents)}</p>
           <Link className="btn gold" href={'/shop'}>Continue shopping</Link>
         </div>
@@ -256,17 +344,74 @@ export default function CartPage() {
                   <label className="label">Payment method</label>
                   <input className="input" value="Cash on Delivery" readOnly aria-readonly />
                 </div>
-                <div><label className="label">Email</label><input className="input" name="email" type="email" required defaultValue="shopper@example.com" /></div>
-                <div><label className="label">Address</label><input className="input" name="line1" required defaultValue="12 MM Alam Road" /></div>
+                {account ? (
+                  <div>
+                    <label className="label">Account</label>
+                    <input className="input" value={account.email} readOnly aria-readonly />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="label">Email</label>
+                    <input className="input" name="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+                    <p className="muted" style={{ marginTop: 6, fontSize: 13 }}>
+                      <Link href="/login">Sign in</Link> to use your saved addresses.
+                    </p>
+                  </div>
+                )}
+                <div>
+                  <label className="label">Full name</label>
+                  <input className="input" value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="Recipient name" />
+                </div>
+                <div>
+                  <label className="label">Phone</label>
+                  <input className="input" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="03xx xxxxxxx" />
+                </div>
+                {savedAddresses.length > 0 && (
+                  <div>
+                    <label className="label">Saved addresses</label>
+                    <select
+                      className="select"
+                      value={selectedAddressId}
+                      onChange={(e) => applySavedAddress(e.target.value)}
+                    >
+                      {savedAddresses.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.isDefault ? 'Default · ' : ''}{a.line1}, {a.city}
+                        </option>
+                      ))}
+                      <option value="new">Use a new address</option>
+                    </select>
+                  </div>
+                )}
+                <div>
+                  <label className="label">Address</label>
+                  <input
+                    className="input"
+                    name="line1"
+                    required
+                    value={line1}
+                    onChange={(e) => setLine1(e.target.value)}
+                    readOnly={usingSaved}
+                  />
+                </div>
                 <div className="grid-3">
-                  <input className="input" name="city" placeholder="City" required defaultValue="Lahore" />
-                  <input className="input" name="state" placeholder="Province" defaultValue="Punjab" />
-                  <input className="input" name="postalCode" placeholder="Postal code (optional)" />
+                  <input className="input" name="city" placeholder="City" required value={city} onChange={(e) => setCity(e.target.value)} readOnly={usingSaved} />
+                  <input className="input" name="state" placeholder="Province" value={state} onChange={(e) => setState(e.target.value)} readOnly={usingSaved} />
+                  <input className="input" name="postalCode" placeholder="Postal code (optional)" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} readOnly={usingSaved} />
                 </div>
                 <div>
                   <label className="label">Country</label>
                   <input className="input" value="Pakistan" readOnly aria-readonly />
                 </div>
+                {account && !usingSaved && (
+                  <label className="row" style={{ gap: 10, alignItems: 'center' }}>
+                    <input type="checkbox" checked={saveAddress} onChange={(e) => setSaveAddress(e.target.checked)} />
+                    <span>Save this address to my account</span>
+                  </label>
+                )}
+                {selectedSaved && usingSaved && (
+                  <p className="muted" style={{ fontSize: 13 }}>Using your saved address snapshot at checkout. Past orders keep the address they were placed with.</p>
+                )}
                 {(quote?.giftNotesEnabled ?? true) && (
                   <div>
                     <label className="label">Gift note (optional)</label>

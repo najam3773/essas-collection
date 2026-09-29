@@ -127,7 +127,7 @@ export default function AdminCategoriesPage() {
         </form>
       )}
 
-      <div className="card" style={{ marginTop: 16 }}>
+      <div className="card table-scroll" style={{ marginTop: 16 }}>
         <table className="table">
           <thead>
             <tr>
