@@ -15,9 +15,12 @@ COPY ecom-frontend/ ./
 ENV NEXT_PUBLIC_API_URL=/api
 ENV INTERNAL_API_URL=http://127.0.0.1:4000
 ENV NEXT_TELEMETRY_DISABLED=1
-# Deplexo serves /api through Express rewrites. Compiling Workers Route Handlers
-# pulls in the Cloudflare Prisma WASM client and OOMs `next build` (SIGKILL).
-RUN rm -rf src/app/api
+# Deplexo serves /api through Express rewrites (INTERNAL_API_URL). Next.js
+# type-checks every file in tsconfig include (`**/*.ts`), so leftover Workers
+# Route Handlers and src/server still require ../generated/prisma/client even
+# when nothing in the Deplexo UI imports them. Strip that experiment from this
+# image only; it remains in git for vinext. Do not generate Cloudflare Prisma.
+RUN rm -rf src/app/api src/server
 RUN npm run build
 
 FROM node:22-alpine
