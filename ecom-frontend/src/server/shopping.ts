@@ -199,19 +199,25 @@ export async function checkoutQuote(body: unknown) {
   });
 }
 
+const optionalBlank = z
+  .union([z.string(), z.null(), z.undefined()])
+  .transform((v) => (typeof v === 'string' ? v.trim() : ''));
+
+const storefrontAddress = z.object({
+  line1: z.string().trim().min(1),
+  line2: z.string().optional(),
+  city: z.string().trim().min(1),
+  state: z.string().optional(),
+  postalCode: optionalBlank,
+  country: optionalBlank.transform(() => 'Pakistan'),
+});
+
 const checkoutBody = z.object({
   cartId: z.string().uuid(),
   email: z.string().email().optional(),
   couponCode: z.string().optional(),
   giftNote: z.string().optional(),
-  shippingAddress: z.object({
-    line1: z.string(),
-    line2: z.string().optional(),
-    city: z.string(),
-    state: z.string().optional(),
-    postalCode: z.string(),
-    country: z.string().default('US'),
-  }),
+  shippingAddress: storefrontAddress,
   mockPay: z.boolean().default(true),
 });
 
@@ -312,7 +318,7 @@ export async function checkout(body: unknown, customerId?: string) {
   await insertId(Prisma.sql`
     INSERT INTO payments (tenant_id, order_id, provider, provider_ref, amount_cents, status, metadata)
     VALUES (
-      ${tenantId}::uuid, ${orderId}::uuid, 'mock', ${`mock_${crypto.randomUUID()}`},
+      ${tenantId}::uuid, ${orderId}::uuid, 'cod', ${`cod_${crypto.randomUUID()}`},
       ${total}, ${parsed.mockPay ? 'succeeded' : 'pending'}, ${payMeta}::jsonb
     )
     RETURNING id
@@ -443,14 +449,8 @@ export async function updateAccount(customerId: string, body: unknown) {
   return { id: updated.id, email: updated.email, fullName: updated.fullName, phone: updated.phone };
 }
 
-const addressBody = z.object({
+const addressBody = storefrontAddress.extend({
   label: z.string().optional(),
-  line1: z.string(),
-  line2: z.string().optional(),
-  city: z.string(),
-  state: z.string().optional(),
-  postalCode: z.string(),
-  country: z.string().default('US'),
   isDefault: z.boolean().optional(),
 });
 

@@ -70,6 +70,13 @@
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.theme-ui-essa .essa-bag {
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .theme-ui-essa .essa-icon-btn,
@@ -873,7 +880,12 @@
 
 @media (max-width: 1099px) {
   .theme-ui-essa .essa-header {
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+  .theme-ui-essa .essa-bag {
+    display: inline-flex !important;
+    visibility: visible;
+    opacity: 1;
   }
 }
 
@@ -902,6 +914,15 @@
 }
 
 @media (max-width: 640px) {
+  .theme-ui-essa .essa-logo {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .theme-ui-essa .essa-tools > button.essa-icon-btn:not(.essa-bag),
+  .theme-ui-essa .essa-tools > a.essa-icon-btn {
+    display: none;
+  }
   .theme-ui-essa .essa-fabric-grid,
   .theme-ui-essa .essa-style-grid {
     grid-template-columns: 1fr;

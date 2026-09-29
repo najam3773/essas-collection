@@ -7,6 +7,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { AppError, assertFound } from '../lib/errors.js';
 import { decorateProductPricing, loadTenantSales } from '../lib/sale-pricing.js';
 import { pieceFilterEnum } from '../lib/piece-type.js';
+import { storefrontAddressSchema } from '../lib/storefront-address.js';
 
 export const storefrontExtraRouter = Router();
 storefrontExtraRouter.use(resolveTenant, requireTenant);
@@ -375,15 +376,9 @@ storefrontExtraRouter.put('/account', requireAuth('customer'), async (req, res, 
 
 storefrontExtraRouter.post('/account/addresses', requireAuth('customer'), async (req, res, next) => {
   try {
-    const body = z
-      .object({
+    const body = storefrontAddressSchema
+      .extend({
         label: z.string().optional(),
-        line1: z.string(),
-        line2: z.string().optional(),
-        city: z.string(),
-        state: z.string().optional(),
-        postalCode: z.string(),
-        country: z.string().default('US'),
         isDefault: z.boolean().optional(),
       })
       .parse(req.body);

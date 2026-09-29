@@ -33,7 +33,7 @@ export function CartDrawer({
       setCart(c);
       if (c.items.length) {
         const q = await api<{ amountToFreeShipping: number | null }>('/storefront/checkout/quote', {
-          body: { cartId: c.id, country: 'PK' },
+          body: { cartId: c.id, country: 'Pakistan' },
         });
         setToFree(q.amountToFreeShipping);
       } else setToFree(null);

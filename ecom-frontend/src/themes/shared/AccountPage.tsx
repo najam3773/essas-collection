@@ -65,8 +65,8 @@ export default function AccountPage() {
       body: {
         line1: fd.get('line1'),
         city: fd.get('city'),
-        postalCode: fd.get('postalCode'),
-        country: fd.get('country') || 'US',
+        postalCode: String(fd.get('postalCode') || '').trim(),
+        country: 'Pakistan',
         isDefault: true,
       },
     });
@@ -130,12 +130,12 @@ export default function AccountPage() {
           <input className="input" name="line1" placeholder="Street address" required />
           <div className="grid-2">
             <input className="input" name="city" placeholder="City" required />
-            <input className="input" name="postalCode" placeholder="ZIP" required />
+            <input className="input" name="postalCode" placeholder="Postal code (optional)" />
           </div>
-          <select className="select" name="country" defaultValue="US">
-            <option value="US">United States</option>
-            <option value="CA">Canada</option>
-          </select>
+          <div>
+            <label className="label">Country</label>
+            <input className="input" value="Pakistan" readOnly aria-readonly />
+          </div>
           <button className="btn secondary">Save address</button>
           <div className="stack">
             {account.addresses.map((a) => (

@@ -1,3 +1,5 @@
+import { notifyCartChanged } from './cart';
+
 const API_PREFIX = (process.env.NEXT_PUBLIC_API_URL || '/api').replace(/\/+$/, '') || '/api';
 
 export type ApiOptions = {
@@ -6,6 +8,11 @@ export type ApiOptions = {
   method?: string;
   body?: unknown;
 };
+
+function shouldRefreshCartCount(path: string, method: string) {
+  if (method === 'GET') return false;
+  return path.startsWith('/storefront/cart') || path === '/storefront/checkout';
+}
 
 export async function api<T = unknown>(path: string, opts: ApiOptions = {}): Promise<T> {
   const method = opts.method || (opts.body ? 'POST' : 'GET');
@@ -32,8 +39,13 @@ export async function api<T = unknown>(path: string, opts: ApiOptions = {}): Pro
     }
     throw new Error(err.error || 'Request failed');
   }
-  if (res.status === 204) return undefined as T;
-  return res.json();
+  if (res.status === 204) {
+    if (shouldRefreshCartCount(path, method)) notifyCartChanged();
+    return undefined as T;
+  }
+  const data = (await res.json()) as T;
+  if (shouldRefreshCartCount(path, method)) notifyCartChanged();
+  return data;
 }
 
 let storeCurrency = 'PKR';

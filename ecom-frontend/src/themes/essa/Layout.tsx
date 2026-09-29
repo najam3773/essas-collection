@@ -2,8 +2,9 @@
 
 import { FormEvent, useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { api, getCartSession } from '@/lib/api';
+import { CART_CHANGED_EVENT, cartQuantity } from '@/lib/cart';
 import { getCustomerToken } from '@/lib/store-auth';
 import { CartDrawer } from '@/components/CartDrawer';
 import type { ThemeLayoutProps } from '../types';
@@ -22,6 +23,7 @@ const NAV = [
 
 export default function EssaLayout({ tenant, context, children }: ThemeLayoutProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const [cartCount, setCartCount] = useState(0);
   const [drawer, setDrawer] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -33,10 +35,15 @@ export default function EssaLayout({ tenant, context, children }: ThemeLayoutPro
 
   useEffect(() => {
     setLoggedIn(!!getCustomerToken(tenant));
-    api<{ items: unknown[] }>('/storefront/cart', { cartSession: getCartSession() })
-      .then((c) => setCartCount(c.items?.length || 0))
-      .catch(() => undefined);
-  }, [tenant]);
+    function refreshCount() {
+      api<{ items: Array<{ quantity: number }> }>('/storefront/cart', { cartSession: getCartSession() })
+        .then((c) => setCartCount(cartQuantity(c.items)))
+        .catch(() => undefined);
+    }
+    refreshCount();
+    window.addEventListener(CART_CHANGED_EVENT, refreshCount);
+    return () => window.removeEventListener(CART_CHANGED_EVENT, refreshCount);
+  }, [tenant, pathname]);
 
   function onSearch(e: FormEvent) {
     e.preventDefault();
@@ -80,8 +87,8 @@ export default function EssaLayout({ tenant, context, children }: ThemeLayoutPro
               ♡
             </Link>
           ) : null}
-          <button type="button" className="essa-icon-btn essa-bag" aria-label="Cart" onClick={() => setDrawer(true)}>
-            Bag{cartCount ? ` ${cartCount}` : ''}
+          <button type="button" className="essa-icon-btn essa-bag" aria-label={`Bag (${cartCount})`} onClick={() => setDrawer(true)}>
+            Bag ({cartCount})
           </button>
         </div>
       </header>
@@ -112,6 +119,9 @@ export default function EssaLayout({ tenant, context, children }: ThemeLayoutPro
         </Link>
         <Link href="/pages/fabric-guide" onClick={() => setMenuOpen(false)}>
           Fabric guide
+        </Link>
+        <Link href={loggedIn ? '/account' : '/login'} onClick={() => setMenuOpen(false)}>
+          Account
         </Link>
       </nav>
       {menuOpen && <button type="button" className="essa-backdrop" aria-label="Close" onClick={() => setMenuOpen(false)} />}

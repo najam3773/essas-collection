@@ -48,7 +48,7 @@ export default function CartPage() {
     setCart(c);
     if (c.items.length) {
       const q = await api<Quote>('/storefront/checkout/quote', {
-        body: { cartId: c.id, country: 'PK', couponCode: coupon || undefined },
+        body: { cartId: c.id, country: 'Pakistan', couponCode: coupon || undefined },
       });
       setQuote(q);
     } else setQuote(null);
@@ -99,7 +99,7 @@ export default function CartPage() {
   async function applyCoupon() {
     if (!cart) return;
     const q = await api<Quote>('/storefront/checkout/quote', {
-      body: { cartId: cart.id, country: 'PK', couponCode: coupon },
+      body: { cartId: cart.id, country: 'Pakistan', couponCode: coupon },
     });
     setQuote(q);
   }
@@ -121,8 +121,8 @@ export default function CartPage() {
             line1: fd.get('line1'),
             city: fd.get('city'),
             state: fd.get('state'),
-            postalCode: fd.get('postalCode'),
-            country: fd.get('country') || 'US',
+            postalCode: String(fd.get('postalCode') || '').trim(),
+            country: 'Pakistan',
           },
         },
       });
@@ -251,19 +251,21 @@ export default function CartPage() {
               <form className="card stack" onSubmit={checkout}>
                 <p className="eyebrow">Payment</p>
                 <h2 style={{ margin: 0 }}>Checkout</h2>
-                <p className="muted">Secure mock payment for demo (Stripe-ready).</p>
+                <p className="muted">Cash on Delivery is available for orders in Pakistan.</p>
+                <div>
+                  <label className="label">Payment method</label>
+                  <input className="input" value="Cash on Delivery" readOnly aria-readonly />
+                </div>
                 <div><label className="label">Email</label><input className="input" name="email" type="email" required defaultValue="shopper@example.com" /></div>
                 <div><label className="label">Address</label><input className="input" name="line1" required defaultValue="12 MM Alam Road" /></div>
                 <div className="grid-3">
                   <input className="input" name="city" placeholder="City" required defaultValue="Lahore" />
                   <input className="input" name="state" placeholder="Province" defaultValue="Punjab" />
-                  <input className="input" name="postalCode" placeholder="Postal code" required defaultValue="54000" />
+                  <input className="input" name="postalCode" placeholder="Postal code (optional)" />
                 </div>
                 <div>
                   <label className="label">Country</label>
-                  <select className="select" name="country" defaultValue="PK">
-                    <option value="PK">Pakistan</option>
-                  </select>
+                  <input className="input" value="Pakistan" readOnly aria-readonly />
                 </div>
                 {(quote?.giftNotesEnabled ?? true) && (
                   <div>
@@ -272,12 +274,6 @@ export default function CartPage() {
                   </div>
                 )}
                 <button className="btn gold">Place order</button>
-                <div className="row">
-                  <span className="badge">Visa</span>
-                  <span className="badge">Mastercard</span>
-                  <span className="badge">PayPal</span>
-                  <span className="badge">Apple Pay</span>
-                </div>
               </form>
             </div>
           )}

@@ -7,6 +7,7 @@ import { AppError, assertFound } from '../lib/errors.js';
 import { hashPassword, signToken } from '../lib/auth.js';
 import { requireAuth } from '../middleware/auth.js';
 import { saleUnitPriceCents } from '../lib/sale-pricing.js';
+import { storefrontAddressSchema } from '../lib/storefront-address.js';
 
 export const storefrontRouter = Router();
 storefrontRouter.use(resolveTenant);
@@ -239,14 +240,7 @@ storefrontRouter.post('/checkout', requireTenant, async (req, res, next) => {
         email: z.string().email().optional(),
         couponCode: z.string().optional(),
         giftNote: z.string().optional(),
-        shippingAddress: z.object({
-          line1: z.string(),
-          line2: z.string().optional(),
-          city: z.string(),
-          state: z.string().optional(),
-          postalCode: z.string(),
-          country: z.string().default('US'),
-        }),
+        shippingAddress: storefrontAddressSchema,
         mockPay: z.boolean().default(true),
       })
       .parse(req.body);
@@ -319,8 +313,8 @@ storefrontRouter.post('/checkout', requireTenant, async (req, res, next) => {
           payments: {
             create: {
               tenantId: req.tenantId!,
-              provider: 'mock',
-              providerRef: `mock_${randomUUID()}`,
+              provider: 'cod',
+              providerRef: `cod_${randomUUID()}`,
               amountCents: total,
               status: body.mockPay ? 'succeeded' : 'pending',
               metadata: { discountCents: discount, couponId, autoRule: pricing.autoRuleName },
