@@ -1,4 +1,4 @@
-FROM node:20-alpine AS backend-build
+FROM node:22-alpine AS backend-build
 WORKDIR /app/ecom-backend
 COPY ecom-backend/package.json ecom-backend/package-lock.json ./
 RUN npm ci
@@ -7,17 +7,20 @@ ENV DATABASE_URL=postgresql://user:pass@localhost:5432/db?schema=public
 ENV DIRECT_URL=postgresql://user:pass@localhost:5432/db?schema=public
 RUN npx prisma generate && npm run build
 
-FROM node:20-alpine AS frontend-build
+FROM node:22-alpine AS frontend-build
 WORKDIR /app/ecom-frontend
 COPY ecom-frontend/package.json ecom-frontend/package-lock.json ./
 RUN npm ci
 COPY ecom-frontend/ ./
-COPY ecom-backend/prisma/schema.prisma /app/ecom-backend/prisma/schema.prisma
 ENV NEXT_PUBLIC_API_URL=/api
 ENV INTERNAL_API_URL=http://127.0.0.1:4000
-RUN npm run prisma:generate && npm run build
+ENV NEXT_TELEMETRY_DISABLED=1
+# Deplexo serves /api through Express rewrites. Compiling Workers Route Handlers
+# pulls in the Cloudflare Prisma WASM client and OOMs `next build` (SIGKILL).
+RUN rm -rf src/app/api
+RUN npm run build
 
-FROM node:20-alpine
+FROM node:22-alpine
 WORKDIR /app
 RUN apk add --no-cache libc6-compat openssl
 COPY --from=backend-build /app/ecom-backend/package.json ./ecom-backend/package.json
