@@ -7,6 +7,7 @@ import { api, money } from '@/lib/api';
 import { ProductImageFields } from '@/components/ProductImageFields';
 
 type Category = { id: string; name: string; slug: string; isActive?: boolean };
+type ProductMedia = { url?: string } | string;
 type Product = {
   id: string;
   name: string;
@@ -14,9 +15,38 @@ type Product = {
   status: string;
   pieceType?: string | null;
   tags?: string[];
+  media?: ProductMedia[] | null;
   category?: { id: string; name: string } | null;
   variants: Array<{ sku: string; priceCents: number }>;
 };
+
+function primaryProductImageUrl(media: Product['media']): string | undefined {
+  if (!Array.isArray(media)) return undefined;
+  for (const item of media) {
+    const url = typeof item === 'string' ? item : item?.url;
+    if (typeof url === 'string' && url.trim()) return url.trim();
+  }
+  return undefined;
+}
+
+function ProductThumb({ url }: { url?: string }) {
+  const [failed, setFailed] = useState(false);
+  if (!url || failed) {
+    return <span className="product-thumb product-thumb--empty" aria-hidden />;
+  }
+  return (
+    <img
+      className="product-thumb"
+      src={url}
+      alt=""
+      width={52}
+      height={64}
+      loading="lazy"
+      decoding="async"
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
 export default function AdminProductsPage() {
   const router = useRouter();
@@ -192,12 +222,26 @@ export default function AdminProductsPage() {
           <button className="btn">Create</button>
         </form>
       )}
-      <div className="card">
+      <div className="card table-scroll">
         <table className="table">
-          <thead><tr><th>Name</th><th>Fabric</th><th>Piece Type</th><th>Status</th><th>From</th><th>SKU</th><th></th></tr></thead>
+          <thead>
+            <tr>
+              <th className="product-thumb-col">Image</th>
+              <th>Name</th>
+              <th>Fabric</th>
+              <th>Piece Type</th>
+              <th>Status</th>
+              <th>From</th>
+              <th>SKU</th>
+              <th></th>
+            </tr>
+          </thead>
           <tbody>
             {products.map((p) => (
               <tr key={p.id}>
+                <td className="product-thumb-col">
+                  <ProductThumb key={p.id} url={primaryProductImageUrl(p.media)} />
+                </td>
                 <td><Link href={`/admin/products/${p.id}`}><strong>{p.name}</strong></Link></td>
                 <td className="muted">{p.category?.name || '—'}</td>
                 <td className="muted">{
