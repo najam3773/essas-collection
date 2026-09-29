@@ -20,6 +20,7 @@
     "check:vinext": "vinext check"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
     "@prisma/adapter-neon": "^6.19.3",
     "@prisma/client": "^6.19.3",
     "@react-three/drei": "^10.7.8",

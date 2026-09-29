@@ -15,6 +15,10 @@ export function json(data: unknown, status = 200, extra?: HeadersInit) {
   return NextResponse.json(data, { status, headers: runtimeHeaders(extra) });
 }
 
+export function empty(status = 204, extra?: HeadersInit) {
+  return new NextResponse(null, { status, headers: runtimeHeaders(extra) });
+}
+
 export function apiError(err: unknown) {
   if (err instanceof AppError) {
     return json({ error: err.message, code: err.code }, err.statusCode);
