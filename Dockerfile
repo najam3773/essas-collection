@@ -42,7 +42,7 @@ ENV API_HOST=127.0.0.1
 ENV NEXT_PUBLIC_API_URL=/api
 ENV INTERNAL_API_URL=http://127.0.0.1:4000
 ENV HOSTNAME=0.0.0.0
-# Render injects PORT. Default only for local docker.
+# Deplexo injects PORT at runtime. Default 3000 only if PORT is unset (local docker).
 ENV PORT=3000
 EXPOSE 3000
 CMD ["node", "scripts/start-docker.mjs"]

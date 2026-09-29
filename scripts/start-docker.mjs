@@ -28,6 +28,17 @@ if (!process.env.IMAGE_STORAGE && process.env.CLOUDINARY_CLOUD_NAME) {
 
 const publicPort = String(process.env.PORT || '3000');
 process.env.PORT = publicPort;
+process.env.HOSTNAME = '0.0.0.0';
+
+let shuttingDown = false;
+
+function isIgnorableKillError(err) {
+  return Boolean(err && (err.code === 'EACCES' || err.code === 'ESRCH' || err.code === 'EPERM'));
+}
+
+function isChildGone(child) {
+  return !child || child.killed || child.exitCode !== null || child.signalCode;
+}
 
 function spawnLogged(name, command, args, options, { fatal = false } = {}) {
   const child = spawn(command, args, {
@@ -36,10 +47,12 @@ function spawnLogged(name, command, args, options, { fatal = false } = {}) {
     env: options.env || process.env,
   });
   child.on('error', (err) => {
+    if (shuttingDown || isIgnorableKillError(err)) return;
     console.error(`${name} failed to start:`, err);
     if (fatal) process.exit(1);
   });
   child.on('exit', (code, signal) => {
+    if (shuttingDown) return;
     if (code === 0 || signal === 'SIGTERM' || signal === 'SIGINT') return;
     console.error(`${name} exited (${code ?? signal}).`);
     if (fatal) process.exit(code && code !== 0 ? code : 1);
@@ -49,6 +62,8 @@ function spawnLogged(name, command, args, options, { fatal = false } = {}) {
 
 function startNext() {
   const cwd = path.join(root, 'ecom-frontend');
+  // Standalone server.js binds from PORT + HOSTNAME. Also pass -H/-p so the
+  // public listener is 0.0.0.0:${PORT} (3000 only when PORT is unset).
   const args = ['server.js', '-H', '0.0.0.0', '-p', publicPort];
   console.log(`Starting public Next.js: node ${args.join(' ')}`);
   return spawnLogged(
@@ -134,11 +149,37 @@ initDatabase().catch((err) => {
   console.error('Prisma/database initialization failed:', err);
 });
 
-function shutdown(signal) {
-  console.error(`Received ${signal}; stopping child processes.`);
-  for (const child of [next, api]) {
-    if (child && !child.killed) child.kill(signal);
+function stopChild(child, signal) {
+  if (isChildGone(child) || !child.pid) return;
+  try {
+    child.kill(signal);
+  } catch (err) {
+    if (!isIgnorableKillError(err)) {
+      console.error('Failed to stop child process:', err);
+    }
   }
+}
+
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.error(`Received ${signal}; stopping child processes.`);
+  stopChild(next, signal);
+  stopChild(api, signal);
+  const finish = () => process.exit(0);
+  const pending = [next, api].filter((child) => child && child.exitCode === null && !child.signalCode);
+  if (pending.length === 0) {
+    finish();
+    return;
+  }
+  let left = pending.length;
+  for (const child of pending) {
+    child.once('exit', () => {
+      left -= 1;
+      if (left <= 0) finish();
+    });
+  }
+  setTimeout(finish, 3000).unref();
 }
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
